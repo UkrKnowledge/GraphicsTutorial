@@ -1,0 +1,52 @@
+Ці keyboard bindings приходять від Casey Muratori і його лекцій "Handmade Hero"
+----------------------------------------------------
+
+TAB          Переходить можливі доповнення слова | Cycles through completions for a word.
+
+ALT-B        Перейти до буфера в поточному вікні | Switch to buffer in the current window.
+ALT-SHIFT-B  Перейти до буфера в другому вікні | Switch to buffer in the other window.
+
+ALT-F        Навантажити файл в поточному вікні | Load file in the current window.
+ALT-SHIFT-F  Навантажити файл в другому вікні | Load file in the other window.
+
+ALT-S        Зберігати файл в поточному вікні | Save the file in the current window.
+ALT-M        Шукає і виконує build.bat. | Looks for and executes a build.bat.
+ALT-R        Повернути буфер | Revert buffer.
+
+ALT-W        Перейти до другого вікна | Switch to the other window.
+
+ALT-C        Перемикається між .h і .cpp файл в поточному вікні | Toggles between H file and CPP file in current window.
+ALT-SHIFT-C  Перемикається між .h і .cpp файл в другому вікні | Toggles between H file and CPP file in other window.
+
+ALT-K        Видаляє буфер (путає чи зберігати його якщо він змінений). | Kills a buffer (ask to save it first if it's modified).
+
+CTRL-arrows  Рухає курсор більшими кроками (слово, пусті характери) | Move cursor by larger increments (word, whitespace)
+
+CTRL-SPACE   Встановлює позначку | Sets the mark.
+CTRL-TAB     Робить відступ для блоку | Reindent block.
+CTRL-Q       Копює блок | Copies the block.
+CTRL-F       Вставляє блок | Pastes the block.
+CTRL-W       Вирізує блок | Cuts the block.
+ALT-SHIFT-;  Повертає до попередньої позначки | Pops back to the previous mark.
+
+ALT-U        Undo | Undo
+
+ALT-J        Перейти до функції за назвою | Jump to a function by name.
+
+CTRL-S       Почінає поступовий пошук | Start incremental search.
+CTRL-S       Рухається до наступного виникнення | Moves to next occurrence.
+CTRL-R       Рухається до попереднього виникнення | Moves to previous occurrence.
+
+ALT-O        Запитує що замінити | Query replace.
+ALT-L        Замінює в блоку | Replace inside block.
+
+ALT-[        Починає записувати макрокоманду дла клавіатури | Begin recording keyboard macro.
+ALT-]        Кінчає записувати макрокоманду дла клавіатури | End recording keyboard macro.
+ALT-'        Відтворює макрокоманду клавіатури | Replay keyboard macro.
+
+ALT-.        Форматує коментар | Reflow a comment.
+
+ALT-N        Перейти до наступної помилки після компіляції | Go to the next error after a compile.
+ALT-SHIFT-N  Перейти до попередньої помилки після компіляції | Go to the previous error after a compile.
+
+ALT-G        Перейти до номера рядка | Goto line number.
