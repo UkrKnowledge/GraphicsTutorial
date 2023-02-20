@@ -26,12 +26,26 @@ f32 CrossProduct2d(v2 A, v2 B)
     return Result;
 }
 
-void DrawTriangle(v3* Points, u32 PixelColor)
+void DrawTriangle(v3* Points, v3* Colors)
 {
     v2 PointA = ProjectPoint(Points[0]);
     v2 PointB = ProjectPoint(Points[1]);
     v2 PointC = ProjectPoint(Points[2]);
 
+    i32 MinX = min(min((i32)PointA.x, (i32)PointB.x), (i32)PointC.x);
+    i32 MaxX = max(max((i32)round(PointA.x), (i32)round(PointB.x)), (i32)round(PointC.x));
+    i32 MinY = min(min((i32)PointA.y, (i32)PointB.y), (i32)PointC.y);
+    i32 MaxY = max(max((i32)round(PointA.y), (i32)round(PointB.y)), (i32)round(PointC.y));
+
+    MinX = max(0, MinX);
+    MinX = min(GlobalState.FrameBufferWidth - 1, MinX);
+    MaxX = max(0, MaxX);
+    MaxX = min(GlobalState.FrameBufferWidth - 1, MaxX);
+    MinY = max(0, MinY);
+    MinY = min(GlobalState.FrameBufferHeight - 1, MinY);
+    MaxY = max(0, MaxY);
+    MaxY = min(GlobalState.FrameBufferHeight - 1, MaxY);
+    
     v2 Edge0 = PointB - PointA;
     v2 Edge1 = PointC - PointB;
     v2 Edge2 = PointA - PointC;
@@ -39,10 +53,12 @@ void DrawTriangle(v3* Points, u32 PixelColor)
     b32 IsTopLeft0 = (Edge0.x >= 0.0f && Edge0.y > 0.0f) || (Edge0.x > 0.0f && Edge0.y == 0.0f);
     b32 IsTopLeft1 = (Edge1.x >= 0.0f && Edge1.y > 0.0f) || (Edge1.x > 0.0f && Edge1.y == 0.0f);
     b32 IsTopLeft2 = (Edge2.x >= 0.0f && Edge2.y > 0.0f) || (Edge2.x > 0.0f && Edge2.y == 0.0f);
+
+    f32 BaryCentricDiv = CrossProduct2d(PointB - PointA, PointC - PointA);
     
-    for (u32 Y = 0; Y < GlobalState.FrameBufferHeight; ++Y)
+    for (i32 Y = MinY; Y <= MaxY; ++Y)
     {
-        for (u32 X = 0; X < GlobalState.FrameBufferWidth; ++X)
+        for (i32 X = MinX; X <= MaxX; ++X)
         {
             v2 PixelPoint = V2(X, Y) + V2(0.5f, 0.5f);
 
@@ -60,7 +76,15 @@ void DrawTriangle(v3* Points, u32 PixelColor)
             {
                 // NOTE: Ми у середині трикутника
                 u32 PixelId = Y * GlobalState.FrameBufferWidth + X;
-                GlobalState.FrameBufferPixels[PixelId] = PixelColor;
+
+                f32 T0 = -CrossLength1 / BaryCentricDiv;
+                f32 T1 = -CrossLength2 / BaryCentricDiv;
+                f32 T2 = -CrossLength0 / BaryCentricDiv;
+                v3 FinalColor = T0 * Colors[0] + T1 * Colors[1] + T2 * Colors[2];
+                FinalColor = FinalColor * 255.0f;
+                u32 FinalColorU32 = ((u32)0xFF << 24) | ((u32)FinalColor.r << 16) | ((u32)FinalColor.g << 8) | (u32)FinalColor.b;
+
+                GlobalState.FrameBufferPixels[PixelId] = FinalColorU32;
             }
         }
     }
@@ -141,8 +165,8 @@ int APIENTRY WinMain(HINSTANCE hInstance,
         GlobalState.FrameBufferWidth = ClientRect.right - ClientRect.left;
         GlobalState.FrameBufferHeight = ClientRect.bottom - ClientRect.top;
 
-        GlobalState.FrameBufferWidth = 50;
-        GlobalState.FrameBufferHeight = 50;
+        GlobalState.FrameBufferWidth = 300;
+        GlobalState.FrameBufferHeight = 300;
         GlobalState.FrameBufferPixels = (u32*)malloc(sizeof(u32) * GlobalState.FrameBufferWidth *
                                                      GlobalState.FrameBufferHeight);
     }
@@ -199,37 +223,19 @@ int APIENTRY WinMain(HINSTANCE hInstance,
             GlobalState.CurrTime -= 2.0f * 3.14159f;
         }
 
-        u32 Colors[] =
+        v3 Colors[] =
         {
-            0xFF00FF00,
-            0xFFFF00FF,
-            0xFF0000FF,
+            V3(1, 0, 0),
+            V3(0, 1, 0),
+            V3(0, 0, 1),
         };
-
-        v3 Points1[3] =
-        {
-            V3(-1.0f, -1.0f, 1.0f),
-            V3(-1.0f,  1.0f, 1.0f),
-            V3( 1.0f,  1.0f, 1.0f),
-        };
-
-        v3 Points2[3] =
-        {
-            V3( 1.0f,  1.0f, 1.0f),
-            V3( 1.0f, -1.0f, 1.0f),
-            V3(-1.0f, -1.0f, 1.0f),
-        };
-
-        DrawTriangle(Points1, Colors[0]);
-        DrawTriangle(Points2, Colors[1]);
         
-#if 0
         for (i32 TriangleId = 9; TriangleId >= 0; --TriangleId)
         {
             f32 DistToCamera = powf(2.0f, TriangleId + 1);
             v3 Points[3] =
                 {
-                    V3(-1.0f, -0.5f, DistToCamera),
+                    V3(-10.0f, -0.5f, DistToCamera),
                     V3(0, 0.5f, DistToCamera),
                     V3(1.0f, -0.5f, DistToCamera),
                 };
@@ -243,7 +249,6 @@ int APIENTRY WinMain(HINSTANCE hInstance,
 
             DrawTriangle(Points, Colors);
         }
-#endif
         
         RECT ClientRect = {};
         Assert(GetClientRect(GlobalState.WindowHandle, &ClientRect));

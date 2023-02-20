@@ -21,6 +21,11 @@ union v3
 
     struct
     {
+        f32 r, g, b;
+    };
+
+    struct
+    {
         v2 xy;
         f32 Ignored0;
     };
