@@ -40,6 +40,12 @@ struct global_state
 {
     b32 IsRunning;
     HWND WindowHandle;
+    HDC DeviceContext;
+    u32 FrameBufferWidth;
+    u32 FrameBufferHeight;
+    u32* FrameBufferPixels;
+
+    f32 CurrOffset;
 };
 
 #define WIN32_GRAPHICS_H
