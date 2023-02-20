@@ -1,9 +1,24 @@
 
+#include <math.h>
 #include <windows.h>
 
 #include "win32_graphics.h"
+#include "graphics_math.cpp"
 
 global global_state GlobalState;
+
+v2 ProjectPoint(v3 WorldPos)
+{
+    v2 Result = {};
+    // NOTE: Перетворюємо до NDC
+    Result = WorldPos.xy / WorldPos.z;
+
+    // NOTE: Перетворюємо до пікселів
+    Result = 0.5f * (Result + V2(1.0f, 1.0f));
+    Result = V2(GlobalState.FrameBufferWidth, GlobalState.FrameBufferHeight) * Result;
+    
+    return Result;
+}
 
 LRESULT Win32WindowCallBack(
   HWND WindowHandle,
@@ -75,10 +90,13 @@ int APIENTRY WinMain(HINSTANCE hInstance,
     }
 
     {
-        RECT ClientRect = {};
-        Assert(GetClientRect(GlobalState.WindowHandle, &ClientRect));
-        GlobalState.FrameBufferWidth = ClientRect.right - ClientRect.left;
-        GlobalState.FrameBufferHeight = ClientRect.bottom - ClientRect.top;
+        //RECT ClientRect = {};
+        //Assert(GetClientRect(GlobalState.WindowHandle, &ClientRect));
+        //GlobalState.FrameBufferWidth = ClientRect.right - ClientRect.left;
+        //GlobalState.FrameBufferHeight = ClientRect.bottom - ClientRect.top;
+
+        GlobalState.FrameBufferWidth = 300;
+        GlobalState.FrameBufferHeight = 300;
         GlobalState.FrameBufferPixels = (u32*)malloc(sizeof(u32) * GlobalState.FrameBufferWidth *
                                                      GlobalState.FrameBufferHeight);
     }
@@ -111,17 +129,15 @@ int APIENTRY WinMain(HINSTANCE hInstance,
             }
         }
 
-        f32 Speed = 200.0f;
-        GlobalState.CurrOffset += Speed * FrameTime;
-        
+        // NOTE: Очистуємо буфер кадри до 0
         for (u32 Y = 0; Y < GlobalState.FrameBufferHeight; ++Y)
         {
             for (u32 X = 0; X < GlobalState.FrameBufferWidth; ++X)
             {
                 u32 PixelId = Y * GlobalState.FrameBufferWidth + X;
 
-                u8 Red = (u8)(X - GlobalState.CurrOffset);
-                u8 Green = (u8)Y;
+                u8 Red = 0;
+                u8 Green = 0;
                 u8 Blue = 0;
                 u8 Alpha = 255;
                 u32 PixelColor = ((u32)Alpha << 24) | ((u32)Red << 16) | ((u32)Green << 8) | (u32)Blue;
@@ -130,6 +146,37 @@ int APIENTRY WinMain(HINSTANCE hInstance,
             }
         }
 
+        // NOTE: Проєктуємо наші точки
+        GlobalState.CurrTime = GlobalState.CurrTime + FrameTime;
+        if (GlobalState.CurrTime > 2.0f * 3.14159f)
+        {
+            GlobalState.CurrTime -= 2.0f * 3.14159f;
+        }
+        
+        for (u32 TriangleId = 0; TriangleId < 10; ++TriangleId)
+        {
+            f32 DistToCamera = powf(2.0f, TriangleId + 1);
+            v3 Points[3] =
+                {
+                    V3(-1.0f, -0.5f, DistToCamera),
+                    V3(1.0f, -0.5f, DistToCamera),
+                    V3(0, 0.5f, DistToCamera),
+                };
+
+            for (u32 PointId = 0; PointId < ArrayCount(Points); ++PointId)
+            {
+                v3 ShiftedPoint = Points[PointId] + V3(cosf(GlobalState.CurrTime), sinf(GlobalState.CurrTime), 0);
+                v2 PixelPos = ProjectPoint(ShiftedPoint);
+
+                if (PixelPos.x >= 0.0f && PixelPos.x < GlobalState.FrameBufferWidth &&
+                    PixelPos.y >= 0.0f && PixelPos.y < GlobalState.FrameBufferHeight)
+                {
+                    u32 PixelId = u32(PixelPos.y) * GlobalState.FrameBufferWidth + u32(PixelPos.x);
+                    GlobalState.FrameBufferPixels[PixelId] = 0xFF00FF00;
+                }
+            }
+        }
+        
         RECT ClientRect = {};
         Assert(GetClientRect(GlobalState.WindowHandle, &ClientRect));
         u32 ClientWidth = ClientRect.right - ClientRect.left;
