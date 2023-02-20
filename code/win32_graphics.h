@@ -36,18 +36,10 @@ typedef int32_t b32;
 #define GigaBytes(Val) (MegaBytes(Val)*1024LL)
 #define TeraBytes(Val) (GigaBytes(Val)*1024LL)
 
-#include "graphics_math.h"
-
 struct global_state
 {
     b32 IsRunning;
     HWND WindowHandle;
-    HDC DeviceContext;
-    u32 FrameBufferWidth;
-    u32 FrameBufferHeight;
-    u32* FrameBufferPixels;
-
-    f32 CurrTime;
 };
 
 #define WIN32_GRAPHICS_H
