@@ -1,5 +1,5 @@
 
-#include <math.h>
+#include <cmath>
 #include <windows.h>
 
 #include "win32_graphics.h"
@@ -18,6 +18,52 @@ v2 ProjectPoint(v3 WorldPos)
     Result = V2(GlobalState.FrameBufferWidth, GlobalState.FrameBufferHeight) * Result;
     
     return Result;
+}
+
+f32 CrossProduct2d(v2 A, v2 B)
+{
+    f32 Result = A.x * B.y - A.y * B.x;
+    return Result;
+}
+
+void DrawTriangle(v3* Points, u32 PixelColor)
+{
+    v2 PointA = ProjectPoint(Points[0]);
+    v2 PointB = ProjectPoint(Points[1]);
+    v2 PointC = ProjectPoint(Points[2]);
+
+    v2 Edge0 = PointB - PointA;
+    v2 Edge1 = PointC - PointB;
+    v2 Edge2 = PointA - PointC;
+
+    b32 IsTopLeft0 = (Edge0.x >= 0.0f && Edge0.y > 0.0f) || (Edge0.x > 0.0f && Edge0.y == 0.0f);
+    b32 IsTopLeft1 = (Edge1.x >= 0.0f && Edge1.y > 0.0f) || (Edge1.x > 0.0f && Edge1.y == 0.0f);
+    b32 IsTopLeft2 = (Edge2.x >= 0.0f && Edge2.y > 0.0f) || (Edge2.x > 0.0f && Edge2.y == 0.0f);
+    
+    for (u32 Y = 0; Y < GlobalState.FrameBufferHeight; ++Y)
+    {
+        for (u32 X = 0; X < GlobalState.FrameBufferWidth; ++X)
+        {
+            v2 PixelPoint = V2(X, Y) + V2(0.5f, 0.5f);
+
+            v2 PixelEdge0 = PixelPoint - PointA;
+            v2 PixelEdge1 = PixelPoint - PointB;
+            v2 PixelEdge2 = PixelPoint - PointC;
+
+            f32 CrossLength0 = CrossProduct2d(PixelEdge0, Edge0);
+            f32 CrossLength1 = CrossProduct2d(PixelEdge1, Edge1);
+            f32 CrossLength2 = CrossProduct2d(PixelEdge2, Edge2);
+            
+            if ((CrossLength0 > 0.0f || (IsTopLeft0 && CrossLength0 == 0.0f)) &&
+                (CrossLength1 > 0.0f || (IsTopLeft1 && CrossLength1 == 0.0f)) &&
+                (CrossLength2 > 0.0f || (IsTopLeft2 && CrossLength2 == 0.0f)))
+            {
+                // NOTE: Ми у середині трикутника
+                u32 PixelId = Y * GlobalState.FrameBufferWidth + X;
+                GlobalState.FrameBufferPixels[PixelId] = PixelColor;
+            }
+        }
+    }
 }
 
 LRESULT Win32WindowCallBack(
@@ -90,13 +136,13 @@ int APIENTRY WinMain(HINSTANCE hInstance,
     }
 
     {
-        //RECT ClientRect = {};
-        //Assert(GetClientRect(GlobalState.WindowHandle, &ClientRect));
-        //GlobalState.FrameBufferWidth = ClientRect.right - ClientRect.left;
-        //GlobalState.FrameBufferHeight = ClientRect.bottom - ClientRect.top;
+        RECT ClientRect = {};
+        Assert(GetClientRect(GlobalState.WindowHandle, &ClientRect));
+        GlobalState.FrameBufferWidth = ClientRect.right - ClientRect.left;
+        GlobalState.FrameBufferHeight = ClientRect.bottom - ClientRect.top;
 
-        GlobalState.FrameBufferWidth = 300;
-        GlobalState.FrameBufferHeight = 300;
+        GlobalState.FrameBufferWidth = 50;
+        GlobalState.FrameBufferHeight = 50;
         GlobalState.FrameBufferPixels = (u32*)malloc(sizeof(u32) * GlobalState.FrameBufferWidth *
                                                      GlobalState.FrameBufferHeight);
     }
@@ -136,8 +182,8 @@ int APIENTRY WinMain(HINSTANCE hInstance,
             {
                 u32 PixelId = Y * GlobalState.FrameBufferWidth + X;
 
-                u8 Red = 0;
-                u8 Green = 0;
+                u8 Red = (u8)0;
+                u8 Green = (u8)0;
                 u8 Blue = 0;
                 u8 Alpha = 255;
                 u32 PixelColor = ((u32)Alpha << 24) | ((u32)Red << 16) | ((u32)Green << 8) | (u32)Blue;
@@ -146,36 +192,58 @@ int APIENTRY WinMain(HINSTANCE hInstance,
             }
         }
 
-        // NOTE: Проєктуємо наші точки
+        // NOTE: Проєктуємо наші трикутники
         GlobalState.CurrTime = GlobalState.CurrTime + FrameTime;
         if (GlobalState.CurrTime > 2.0f * 3.14159f)
         {
             GlobalState.CurrTime -= 2.0f * 3.14159f;
         }
+
+        u32 Colors[] =
+        {
+            0xFF00FF00,
+            0xFFFF00FF,
+            0xFF0000FF,
+        };
+
+        v3 Points1[3] =
+        {
+            V3(-1.0f, -1.0f, 1.0f),
+            V3(-1.0f,  1.0f, 1.0f),
+            V3( 1.0f,  1.0f, 1.0f),
+        };
+
+        v3 Points2[3] =
+        {
+            V3( 1.0f,  1.0f, 1.0f),
+            V3( 1.0f, -1.0f, 1.0f),
+            V3(-1.0f, -1.0f, 1.0f),
+        };
+
+        DrawTriangle(Points1, Colors[0]);
+        DrawTriangle(Points2, Colors[1]);
         
-        for (u32 TriangleId = 0; TriangleId < 10; ++TriangleId)
+#if 0
+        for (i32 TriangleId = 9; TriangleId >= 0; --TriangleId)
         {
             f32 DistToCamera = powf(2.0f, TriangleId + 1);
             v3 Points[3] =
                 {
                     V3(-1.0f, -0.5f, DistToCamera),
-                    V3(1.0f, -0.5f, DistToCamera),
                     V3(0, 0.5f, DistToCamera),
+                    V3(1.0f, -0.5f, DistToCamera),
                 };
 
+            // NOTE: Рухаємо точки трикутника в коло
             for (u32 PointId = 0; PointId < ArrayCount(Points); ++PointId)
             {
                 v3 ShiftedPoint = Points[PointId] + V3(cosf(GlobalState.CurrTime), sinf(GlobalState.CurrTime), 0);
-                v2 PixelPos = ProjectPoint(ShiftedPoint);
-
-                if (PixelPos.x >= 0.0f && PixelPos.x < GlobalState.FrameBufferWidth &&
-                    PixelPos.y >= 0.0f && PixelPos.y < GlobalState.FrameBufferHeight)
-                {
-                    u32 PixelId = u32(PixelPos.y) * GlobalState.FrameBufferWidth + u32(PixelPos.x);
-                    GlobalState.FrameBufferPixels[PixelId] = 0xFF00FF00;
-                }
+                Points[PointId] = ShiftedPoint;
             }
+
+            DrawTriangle(Points, Colors);
         }
+#endif
         
         RECT ClientRect = {};
         Assert(GetClientRect(GlobalState.WindowHandle, &ClientRect));
