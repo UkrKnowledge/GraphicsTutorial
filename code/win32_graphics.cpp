@@ -80,11 +80,18 @@ void DrawTriangle(v3* Points, v3* Colors)
                 f32 T0 = -CrossLength1 / BaryCentricDiv;
                 f32 T1 = -CrossLength2 / BaryCentricDiv;
                 f32 T2 = -CrossLength0 / BaryCentricDiv;
-                v3 FinalColor = T0 * Colors[0] + T1 * Colors[1] + T2 * Colors[2];
-                FinalColor = FinalColor * 255.0f;
-                u32 FinalColorU32 = ((u32)0xFF << 24) | ((u32)FinalColor.r << 16) | ((u32)FinalColor.g << 8) | (u32)FinalColor.b;
 
-                GlobalState.FrameBufferPixels[PixelId] = FinalColorU32;
+                f32 Depth = T0 * (1.0f / Points[0].z) + T1 * (1.0f / Points[1].z) + T2 * (1.0f / Points[2].z);
+                Depth = 1.0f / Depth;
+                if (Depth < GlobalState.DepthBuffer[PixelId])
+                {
+                    v3 FinalColor = T0 * Colors[0] + T1 * Colors[1] + T2 * Colors[2];
+                    FinalColor = FinalColor * 255.0f;
+                    u32 FinalColorU32 = ((u32)0xFF << 24) | ((u32)FinalColor.r << 16) | ((u32)FinalColor.g << 8) | (u32)FinalColor.b;
+
+                    GlobalState.FrameBufferPixels[PixelId] = FinalColorU32;
+                    GlobalState.DepthBuffer[PixelId] = Depth;
+                }
             }
         }
     }
@@ -169,6 +176,8 @@ int APIENTRY WinMain(HINSTANCE hInstance,
         GlobalState.FrameBufferHeight = 300;
         GlobalState.FrameBufferPixels = (u32*)malloc(sizeof(u32) * GlobalState.FrameBufferWidth *
                                                      GlobalState.FrameBufferHeight);
+        GlobalState.DepthBuffer = (f32*)malloc(sizeof(f32) * GlobalState.FrameBufferWidth *
+                                                     GlobalState.FrameBufferHeight);
     }
 
     LARGE_INTEGER BeginTime = {};
@@ -211,7 +220,8 @@ int APIENTRY WinMain(HINSTANCE hInstance,
                 u8 Blue = 0;
                 u8 Alpha = 255;
                 u32 PixelColor = ((u32)Alpha << 24) | ((u32)Red << 16) | ((u32)Green << 8) | (u32)Blue;
-                
+
+                GlobalState.DepthBuffer[PixelId] = FLT_MAX;
                 GlobalState.FrameBufferPixels[PixelId] = PixelColor;
             }
         }
@@ -223,13 +233,46 @@ int APIENTRY WinMain(HINSTANCE hInstance,
             GlobalState.CurrTime -= 2.0f * 3.14159f;
         }
 
-        v3 Colors[] =
+        v3 Positions1[] =
+        {
+            V3(0.0f, 0.5f, 1.0f),
+            V3(0.5f, -0.5f, 1.0f),
+            V3(-0.5f, -0.5f, 1.0f),
+        };
+        
+        v3 Colors1[] =
         {
             V3(1, 0, 0),
             V3(0, 1, 0),
             V3(0, 0, 1),
         };
+
+        v3 Positions2[] =
+        {
+            V3(0.0f, 0.5f, 1.0f),
+            V3(0.5f, -0.5f, 1.2f),
+            V3(-0.5f, -0.5f, 0.8f),
+        };
         
+        v3 Colors2[] =
+        {
+            V3(1, 1, 0),
+            V3(0, 1, 1),
+            V3(1, 0, 1),
+        };
+
+        v3 Positions3[] =
+        {
+            V3(0.0f, -0.5f, 0.6f),
+            V3(-1.5f, 0.5f, 3.0f),
+            V3(1.5f, 0.5f, 3.0f),
+        };
+
+        DrawTriangle(Positions2, Colors2);
+        DrawTriangle(Positions1, Colors1);
+        DrawTriangle(Positions3, Colors2);
+
+#if 0
         for (i32 TriangleId = 9; TriangleId >= 0; --TriangleId)
         {
             f32 DistToCamera = powf(2.0f, TriangleId + 1);
@@ -249,6 +292,7 @@ int APIENTRY WinMain(HINSTANCE hInstance,
 
             DrawTriangle(Points, Colors);
         }
+#endif
         
         RECT ClientRect = {};
         Assert(GetClientRect(GlobalState.WindowHandle, &ClientRect));
