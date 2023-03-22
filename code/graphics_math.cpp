@@ -81,6 +81,36 @@ v3 operator+(v3 A, v3 B)
     return Result;
 }
 
+v3 operator+=(v3& A, v3 B)
+{
+    A = A + B;
+    return A;
+}
+
+v3 operator-(v3 A)
+{
+    v3 Result = {};
+    Result.x = -A.x;
+    Result.y = -A.y;
+    Result.z = -A.z;
+    return Result;
+}
+
+v3 operator-(v3 A, v3 B)
+{
+    v3 Result = {};
+    Result.x = A.x - B.x;
+    Result.y = A.y - B.y;
+    Result.z = A.z - B.z;
+    return Result;
+}
+
+v3 operator-=(v3& A, v3 B)
+{
+    A = A - B;
+    return A;
+}
+
 v3 operator*(f32 A, v3 B)
 {
     v3 Result = {};
@@ -99,9 +129,35 @@ v3 operator*(v3 B, f32 A)
     return Result;
 }
 
+v3 operator/(v3 B, f32 A)
+{
+    v3 Result = {};
+    Result.x = B.x / A;
+    Result.y = B.y / A;
+    Result.z = B.z / A;
+    return Result;
+}
+
+v3 Normalize(v3 A)
+{
+    f32 Length = sqrt(A.x * A.x + A.y * A.y + A.z * A.z);
+    v3 Result = A / Length;
+    return Result;
+}
+
 //
 // NOTE: V4
 //
+
+v4 V4(f32 X, f32 Y, f32 Z, f32 W)
+{
+    v4 Result = {};
+    Result.x = X;
+    Result.y = Y;
+    Result.z = Z;
+    Result.w = W;
+    return Result;
+}
 
 v4 V4(v3 A, f32 W)
 {
@@ -200,5 +256,11 @@ m4 TranslationMatrix(f32 X, f32 Y, f32 Z)
 {
     m4 Result = IdentityM4();
     Result.v[3].xyz = V3(X, Y, Z);
+    return Result;
+}
+
+m4 TranslationMatrix(v3 Pos)
+{
+    m4 Result = TranslationMatrix(Pos.x, Pos.y, Pos.z);
     return Result;
 }
