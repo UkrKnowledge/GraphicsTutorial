@@ -13,7 +13,7 @@
 # Вимоги:
  - Visual Studio.
  - Windows.
- - DX11 SDK та графічна карта, що підтримуює DX11.
+ - Для пізніших лекцій, DX11 SDK та графічна карта, що підтримуює DX11.
 
 Детальніше у першій лекції на ютубі => [**Комп'ютерна Графіка 1 - Вступ**](https://www.youtube.com/watch?v=5vt6uss2fUU&list=PLBS08eIaKMjniUWf2mKM3kj5Z60W1H5ST&index=1)
 
