@@ -12,6 +12,16 @@ union v2
     f32 e[2];
 };
 
+union v2i
+{
+    struct
+    {
+        i32 x, y;
+    };
+
+    i32 e[2];
+};
+
 union v3
 {
     struct

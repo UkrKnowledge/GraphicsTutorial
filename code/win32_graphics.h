@@ -38,6 +38,27 @@ typedef int32_t b32;
 
 #include "graphics_math.h"
 
+struct texture
+{
+    u32 Width;
+    u32 Height;
+    u32* Texels;
+};
+
+enum sampler_type
+{
+    SamplerType_None,
+
+    SamplerType_Nearest,
+    SamplerType_Bilinear,
+};
+
+struct sampler
+{
+    sampler_type Type;
+    u32 BorderColor;
+};
+
 struct camera
 {
     b32 PrevMouseDown;

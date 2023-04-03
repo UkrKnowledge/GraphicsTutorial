@@ -22,9 +22,26 @@ f32 CrossProduct2d(v2 A, v2 B)
     return Result;
 }
 
+v3 ColorU32ToRgb(u32 Color)
+{
+    v3 Result = {};
+    Result.r = (Color >> 16) & 0xFF;
+    Result.g = (Color >> 8) & 0xFF;
+    Result.b = (Color >> 0) & 0xFF;
+    Result /= 255.0f;
+    return Result;
+}
+
+u32 ColorRgbToU32(v3 Color)
+{
+    Color *= 255.0f;
+    u32 Result = ((u32)0xFF << 24) | ((u32)Color.r << 16) | ((u32)Color.g << 8) | (u32)Color.b;
+    return Result;
+}
+
 void DrawTriangle(v3 ModelVertex0, v3 ModelVertex1, v3 ModelVertex2,
-                  v3 ModelColor0, v3 ModelColor1, v3 ModelColor2,
-                  m4 Transform)
+                  v2 ModelUv0, v2 ModelUv1, v2 ModelUv2,
+                  m4 Transform, texture Texture, sampler Sampler)
 {
     v4 TransformedPoint0 = (Transform * V4(ModelVertex0, 1.0f));
     v4 TransformedPoint1 = (Transform * V4(ModelVertex1, 1.0f));
@@ -90,11 +107,70 @@ void DrawTriangle(v3 ModelVertex0, v3 ModelVertex1, v3 ModelVertex2,
                 f32 DepthZ = T0 * TransformedPoint0.z + T1 * TransformedPoint1.z + T2 * TransformedPoint2.z;
                 if (DepthZ >= 0.0f && DepthZ <= 1.0f && DepthZ < GlobalState.DepthBuffer[PixelId])
                 {
-                    v3 FinalColor = T0 * ModelColor0 + T1 * ModelColor1 + T2 * ModelColor2;
-                    FinalColor = FinalColor * 255.0f;
-                    u32 FinalColorU32 = ((u32)0xFF << 24) | ((u32)FinalColor.r << 16) | ((u32)FinalColor.g << 8) | (u32)FinalColor.b;
+                    f32 OneOverW = T0 * (1.0f / TransformedPoint0.w) + T1 * (1.0f / TransformedPoint1.w) + T2 * (1.0f / TransformedPoint2.w);
 
-                    GlobalState.FrameBufferPixels[PixelId] = FinalColorU32;
+                    v2 Uv = T0 * (ModelUv0 / TransformedPoint0.w) + T1 * (ModelUv1 / TransformedPoint1.w) + T2 * (ModelUv2 / TransformedPoint2.w);
+                    Uv /= OneOverW;
+
+                    u32 TexelColor = 0;
+                    switch (Sampler.Type)
+                    {
+                        case SamplerType_Nearest:
+                        {
+                            i32 TexelX = (i32)floorf(Uv.x * (Texture.Width - 1));
+                            i32 TexelY = (i32)floorf(Uv.y * (Texture.Height - 1));
+                            if (TexelX >= 0 && TexelX < Texture.Width &&
+                                TexelY >= 0 && TexelY < Texture.Height)
+                            {
+                                TexelColor = Texture.Texels[TexelY * Texture.Width + TexelX];
+                            }
+                            else
+                            {
+                                TexelColor = 0xFF00FF00;
+                            }
+                        } break;
+
+                        case SamplerType_Bilinear:
+                        {
+                            v2 TexelV2 = Uv * V2(Texture.Width, Texture.Height) - V2(0.5f, 0.5f);
+                            v2i TexelPos[4] = {};
+                            TexelPos[0] = V2I(floorf(TexelV2.x), floorf(TexelV2.y));
+                            TexelPos[1] = TexelPos[0] + V2I(1, 0);
+                            TexelPos[2] = TexelPos[0] + V2I(0, 1);
+                            TexelPos[3] = TexelPos[0] + V2I(1, 1);
+
+                            v3 TexelColors[4] = {};
+                            for (u32 TexelId = 0; TexelId < ArrayCount(TexelPos); ++TexelId)
+                            {
+                                v2i CurrTexelPos = TexelPos[TexelId];
+                                if (CurrTexelPos.x >= 0 && CurrTexelPos.x < Texture.Width &&
+                                    CurrTexelPos.y >= 0 && CurrTexelPos.y < Texture.Height)
+                                {
+                                    TexelColors[TexelId] = ColorU32ToRgb(Texture.Texels[CurrTexelPos.y * Texture.Width + CurrTexelPos.x]);
+                                }
+                                else
+                                {
+                                    TexelColors[TexelId] = ColorU32ToRgb(Sampler.BorderColor);
+                                }
+                            }
+
+                            f32 S = TexelV2.x - floorf(TexelV2.x);
+                            f32 K = TexelV2.y - floorf(TexelV2.y);
+
+                            v3 Interpolated0 = Lerp(TexelColors[0], TexelColors[1], S);
+                            v3 Interpolated1 = Lerp(TexelColors[2], TexelColors[3], S);
+                            v3 FinalColor = Lerp(Interpolated0, Interpolated1, K);
+
+                            TexelColor = ColorRgbToU32(FinalColor);
+                        } break;
+                        
+                        default:
+                        {
+                            InvalidCodePath;
+                        }
+                    }
+                    
+                    GlobalState.FrameBufferPixels[PixelId] = TexelColor;
                     GlobalState.DepthBuffer[PixelId] = DepthZ;
                 }
             }
@@ -185,6 +261,36 @@ int APIENTRY WinMain(HINSTANCE hInstance,
                                                      GlobalState.FrameBufferHeight);
     }
 
+    texture CheckerBoardTexture = {};
+    sampler Sampler = {};
+    {
+        Sampler.Type = SamplerType_Bilinear;
+        Sampler.BorderColor = 0xFF000000;
+
+        u32 BlockSize = 8;
+        u32 NumBlocks = 8;
+        
+        CheckerBoardTexture.Width = BlockSize * NumBlocks;
+        CheckerBoardTexture.Height = BlockSize * NumBlocks;
+        CheckerBoardTexture.Texels = (u32*)malloc(sizeof(u32) * CheckerBoardTexture.Width * CheckerBoardTexture.Height);
+        for (u32 Y = 0; Y < NumBlocks; ++Y)
+        {
+            for (u32 X = 0; X < NumBlocks; ++X)
+            {
+                u32 ColorChannel = 255 * ((X + (Y % 2)) % 2);
+
+                for (u32 BlockY = 0; BlockY < BlockSize; ++BlockY)
+                {
+                    for (u32 BlockX = 0; BlockX < BlockSize; ++BlockX)
+                    {
+                        u32 TexelId = (Y * BlockSize + BlockY) * CheckerBoardTexture.Width + (X * BlockSize + BlockX);
+                        CheckerBoardTexture.Texels[TexelId] = ((u32)0xFF << 24) | ((u32)ColorChannel << 16) | ((u32)ColorChannel << 8) | (u32)ColorChannel;
+                    }
+                }
+            }
+        }
+    }
+    
     LARGE_INTEGER BeginTime = {};
     LARGE_INTEGER EndTime = {};
     Assert(QueryPerformanceCounter(&BeginTime));
@@ -352,6 +458,8 @@ int APIENTRY WinMain(HINSTANCE hInstance,
         {
             GlobalState.CurrTime -= 2.0f * 3.14159f;
         }
+
+        GlobalState.CurrTime = 0;
         
         v3 ModelVertices[] =
         {
@@ -368,17 +476,17 @@ int APIENTRY WinMain(HINSTANCE hInstance,
             V3(0.5f, -0.5f, 0.5f),
         };
         
-        v3 ModelColors[] =
+        v2 ModelUvs[] =
         {
-            V3(1, 0, 0),
-            V3(0, 1, 0),
-            V3(0, 0, 1),
-            V3(1, 0, 1),
+            V2(0, 0),
+            V2(1, 0),
+            V2(1, 1),
+            V2(0, 1),
 
-            V3(1, 1, 0),
-            V3(0, 1, 1),
-            V3(1, 0, 1),
-            V3(1, 1, 1),
+            V2(0, 0),
+            V2(1, 0),
+            V2(1, 1),
+            V2(0, 1),
         };
 
         u32 ModelIndices[] =
@@ -422,8 +530,8 @@ int APIENTRY WinMain(HINSTANCE hInstance,
             u32 Index2 = ModelIndices[IndexId + 2];
             
             DrawTriangle(ModelVertices[Index0], ModelVertices[Index1], ModelVertices[Index2],
-                         ModelColors[Index0], ModelColors[Index1], ModelColors[Index2],
-                         Transform);
+                         ModelUvs[Index0], ModelUvs[Index1], ModelUvs[Index2],
+                         Transform, CheckerBoardTexture, Sampler);
         }
                 
         BITMAPINFO BitmapInfo = {};
