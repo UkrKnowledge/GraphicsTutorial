@@ -37,6 +37,7 @@ typedef int32_t b32;
 #define TeraBytes(Val) (GigaBytes(Val)*1024LL)
 
 #include "graphics_math.h"
+#include "clipper.h"
 
 struct texture
 {

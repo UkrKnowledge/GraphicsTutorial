@@ -4,6 +4,7 @@
 
 #include "win32_graphics.h"
 #include "graphics_math.cpp"
+#include "clipper.cpp"
 
 global global_state GlobalState;
 
@@ -39,27 +40,23 @@ u32 ColorRgbToU32(v3 Color)
     return Result;
 }
 
-void DrawTriangle(v3 ModelVertex0, v3 ModelVertex1, v3 ModelVertex2,
-                  v2 ModelUv0, v2 ModelUv1, v2 ModelUv2,
-                  m4 Transform, texture Texture, sampler Sampler)
+void DrawTriangle(clip_vertex Vertex0, clip_vertex Vertex1, clip_vertex Vertex2, 
+                  texture Texture, sampler Sampler)
 {
-    v4 TransformedPoint0 = (Transform * V4(ModelVertex0, 1.0f));
-    v4 TransformedPoint1 = (Transform * V4(ModelVertex1, 1.0f));
-    v4 TransformedPoint2 = (Transform * V4(ModelVertex2, 1.0f));
+    Vertex0.Pos.xyz /= Vertex0.Pos.w;
+    Vertex1.Pos.xyz /= Vertex1.Pos.w;
+    Vertex2.Pos.xyz /= Vertex2.Pos.w;
     
-    TransformedPoint0.xyz /= TransformedPoint0.w;
-    TransformedPoint1.xyz /= TransformedPoint1.w;
-    TransformedPoint2.xyz /= TransformedPoint2.w;
-    
-    v2 PointA = NdcToPixels(TransformedPoint0.xy);
-    v2 PointB = NdcToPixels(TransformedPoint1.xy);
-    v2 PointC = NdcToPixels(TransformedPoint2.xy);
+    v2 PointA = NdcToPixels(Vertex0.Pos.xy);
+    v2 PointB = NdcToPixels(Vertex1.Pos.xy);
+    v2 PointC = NdcToPixels(Vertex2.Pos.xy);
 
     i32 MinX = min(min((i32)PointA.x, (i32)PointB.x), (i32)PointC.x);
     i32 MaxX = max(max((i32)round(PointA.x), (i32)round(PointB.x)), (i32)round(PointC.x));
     i32 MinY = min(min((i32)PointA.y, (i32)PointB.y), (i32)PointC.y);
     i32 MaxY = max(max((i32)round(PointA.y), (i32)round(PointB.y)), (i32)round(PointC.y));
 
+#if 0
     MinX = max(0, MinX);
     MinX = min(GlobalState.FrameBufferWidth - 1, MinX);
     MaxX = max(0, MaxX);
@@ -68,6 +65,7 @@ void DrawTriangle(v3 ModelVertex0, v3 ModelVertex1, v3 ModelVertex2,
     MinY = min(GlobalState.FrameBufferHeight - 1, MinY);
     MaxY = max(0, MaxY);
     MaxY = min(GlobalState.FrameBufferHeight - 1, MaxY);
+#endif
     
     v2 Edge0 = PointB - PointA;
     v2 Edge1 = PointC - PointB;
@@ -104,12 +102,12 @@ void DrawTriangle(v3 ModelVertex0, v3 ModelVertex1, v3 ModelVertex2,
                 f32 T1 = -CrossLength2 / BaryCentricDiv;
                 f32 T2 = -CrossLength0 / BaryCentricDiv;
 
-                f32 DepthZ = T0 * TransformedPoint0.z + T1 * TransformedPoint1.z + T2 * TransformedPoint2.z;
+                f32 DepthZ = T0 * Vertex0.Pos.z + T1 * Vertex1.Pos.z + T2 * Vertex2.Pos.z;
                 if (DepthZ >= 0.0f && DepthZ <= 1.0f && DepthZ < GlobalState.DepthBuffer[PixelId])
                 {
-                    f32 OneOverW = T0 * (1.0f / TransformedPoint0.w) + T1 * (1.0f / TransformedPoint1.w) + T2 * (1.0f / TransformedPoint2.w);
+                    f32 OneOverW = T0 * (1.0f / Vertex0.Pos.w) + T1 * (1.0f / Vertex1.Pos.w) + T2 * (1.0f / Vertex2.Pos.w);
 
-                    v2 Uv = T0 * (ModelUv0 / TransformedPoint0.w) + T1 * (ModelUv1 / TransformedPoint1.w) + T2 * (ModelUv2 / TransformedPoint2.w);
+                    v2 Uv = T0 * (Vertex0.Uv / Vertex0.Pos.w) + T1 * (Vertex1.Uv / Vertex1.Pos.w) + T2 * (Vertex2.Uv / Vertex2.Pos.w);
                     Uv /= OneOverW;
 
                     u32 TexelColor = 0;
@@ -175,6 +173,33 @@ void DrawTriangle(v3 ModelVertex0, v3 ModelVertex1, v3 ModelVertex2,
                 }
             }
         }
+    }
+}
+
+void DrawTriangle(v4 ModelVertex0, v4 ModelVertex1, v4 ModelVertex2,
+                  v2 ModelUv0, v2 ModelUv1, v2 ModelUv2,
+                  texture Texture, sampler Sampler)
+{
+    clip_result Ping = {};
+    Ping.NumTriangles = 1;
+    Ping.Vertices[0] = { ModelVertex0, ModelUv0 };
+    Ping.Vertices[1] = { ModelVertex1, ModelUv1 };
+    Ping.Vertices[2] = { ModelVertex2, ModelUv2 };
+    
+    clip_result Pong = {};
+    
+    ClipPolygonToAxis(&Ping, &Pong, ClipAxis_Left);
+    ClipPolygonToAxis(&Pong, &Ping, ClipAxis_Right);
+    ClipPolygonToAxis(&Ping, &Pong, ClipAxis_Top);
+    ClipPolygonToAxis(&Pong, &Ping, ClipAxis_Bottom);
+    ClipPolygonToAxis(&Ping, &Pong, ClipAxis_Near);
+    ClipPolygonToAxis(&Pong, &Ping, ClipAxis_Far);
+    ClipPolygonToAxis(&Ping, &Pong, ClipAxis_W);
+
+    for (u32 TriangleId = 0; TriangleId < Pong.NumTriangles; ++TriangleId)
+    {
+        DrawTriangle(Pong.Vertices[3*TriangleId + 0], Pong.Vertices[3*TriangleId + 1],
+                     Pong.Vertices[3*TriangleId + 2], Texture, Sampler);
     }
 }
 
@@ -267,7 +292,7 @@ int APIENTRY WinMain(HINSTANCE hInstance,
         Sampler.Type = SamplerType_Bilinear;
         Sampler.BorderColor = 0xFF000000;
 
-        u32 BlockSize = 8;
+        u32 BlockSize = 4;
         u32 NumBlocks = 8;
         
         CheckerBoardTexture.Width = BlockSize * NumBlocks;
@@ -523,17 +548,25 @@ int APIENTRY WinMain(HINSTANCE hInstance,
                         RotationMatrix(GlobalState.CurrTime, GlobalState.CurrTime, GlobalState.CurrTime) *
                         ScaleMatrix(1, 1, 1));
 
+        v4* TransformedVertices = (v4*)malloc(sizeof(v4) * ArrayCount(ModelVertices));
+        for (u32 VertexId = 0; VertexId < ArrayCount(ModelVertices); ++VertexId)
+        {
+            TransformedVertices[VertexId] = (Transform * V4(ModelVertices[VertexId], 1.0f));
+        }
+        
         for (u32 IndexId = 0; IndexId < ArrayCount(ModelIndices); IndexId += 3)
         {
             u32 Index0 = ModelIndices[IndexId + 0];
             u32 Index1 = ModelIndices[IndexId + 1];
             u32 Index2 = ModelIndices[IndexId + 2];
             
-            DrawTriangle(ModelVertices[Index0], ModelVertices[Index1], ModelVertices[Index2],
+            DrawTriangle(TransformedVertices[Index0], TransformedVertices[Index1], TransformedVertices[Index2],
                          ModelUvs[Index0], ModelUvs[Index1], ModelUvs[Index2],
-                         Transform, CheckerBoardTexture, Sampler);
+                         CheckerBoardTexture, Sampler);
         }
-                
+
+        free(TransformedVertices);
+        
         BITMAPINFO BitmapInfo = {};
         BitmapInfo.bmiHeader.biSize = sizeof(tagBITMAPINFOHEADER);
         BitmapInfo.bmiHeader.biWidth = GlobalState.FrameBufferWidth;

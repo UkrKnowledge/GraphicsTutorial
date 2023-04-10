@@ -231,6 +231,16 @@ v4 operator*(v4 A, f32 B)
     return Result;
 }
 
+v4 operator*(f32 B, v4 A)
+{
+    v4 Result = {};
+    Result.x = A.x * B;
+    Result.y = A.y * B;
+    Result.z = A.z * B;
+    Result.w = A.w * B;
+    return Result;
+}
+
 //
 // NOTE: M4
 //
