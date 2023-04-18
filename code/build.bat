@@ -3,7 +3,7 @@
 set CodeDir=..\code
 set OutputDir=..\build_win32
 
-set CompilerFlags=-Od -Zi -nologo
+set CompilerFlags=-O2 -Zi -nologo
 set LinkerFlags=-incremental:no -opt:ref user32.lib gdi32.lib
 
 If NOT EXIST %OutputDir% mkdir %OutputDir%

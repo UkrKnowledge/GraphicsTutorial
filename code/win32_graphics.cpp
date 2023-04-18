@@ -43,9 +43,13 @@ u32 ColorRgbToU32(v3 Color)
 void DrawTriangle(clip_vertex Vertex0, clip_vertex Vertex1, clip_vertex Vertex2, 
                   texture Texture, sampler Sampler)
 {
-    Vertex0.Pos.xyz /= Vertex0.Pos.w;
-    Vertex1.Pos.xyz /= Vertex1.Pos.w;
-    Vertex2.Pos.xyz /= Vertex2.Pos.w;
+    Vertex0.Pos.w = 1.0f / Vertex0.Pos.w;
+    Vertex1.Pos.w = 1.0f / Vertex1.Pos.w;
+    Vertex2.Pos.w = 1.0f / Vertex2.Pos.w;
+    
+    Vertex0.Pos.xyz *= Vertex0.Pos.w;
+    Vertex1.Pos.xyz *= Vertex1.Pos.w;
+    Vertex2.Pos.xyz *= Vertex2.Pos.w;
     
     v2 PointA = NdcToPixels(Vertex0.Pos.xy);
     v2 PointB = NdcToPixels(Vertex1.Pos.xy);
@@ -76,38 +80,48 @@ void DrawTriangle(clip_vertex Vertex0, clip_vertex Vertex1, clip_vertex Vertex2,
     b32 IsTopLeft2 = (Edge2.x >= 0.0f && Edge2.y > 0.0f) || (Edge2.x > 0.0f && Edge2.y == 0.0f);
     
     f32 BaryCentricDiv = CrossProduct2d(PointB - PointA, PointC - PointA);
+
+    Vertex0.Uv *= Vertex0.Pos.w;
+    Vertex1.Uv *= Vertex1.Pos.w;
+    Vertex2.Uv *= Vertex2.Pos.w;
+
+    f32 Edge0DiffX = Edge0.y;
+    f32 Edge1DiffX = Edge1.y;
+    f32 Edge2DiffX = Edge2.y;
+
+    f32 Edge0DiffY = -Edge0.x;
+    f32 Edge1DiffY = -Edge1.x;
+    f32 Edge2DiffY = -Edge2.x;
+
+    f32 Edge0RowY = CrossProduct2d(V2(MinX, MinY) - PointA, Edge0);
+    f32 Edge1RowY = CrossProduct2d(V2(MinX, MinY) - PointB, Edge1);
+    f32 Edge2RowY = CrossProduct2d(V2(MinX, MinY) - PointC, Edge2);
     
     for (i32 Y = MinY; Y <= MaxY; ++Y)
     {
+        f32 Edge0 = Edge0RowY;
+        f32 Edge1 = Edge1RowY;
+        f32 Edge2 = Edge2RowY;
+        
         for (i32 X = MinX; X <= MaxX; ++X)
         {
-            v2 PixelPoint = V2(X, Y) + V2(0.5f, 0.5f);
-
-            v2 PixelEdge0 = PixelPoint - PointA;
-            v2 PixelEdge1 = PixelPoint - PointB;
-            v2 PixelEdge2 = PixelPoint - PointC;
-
-            f32 CrossLength0 = CrossProduct2d(PixelEdge0, Edge0);
-            f32 CrossLength1 = CrossProduct2d(PixelEdge1, Edge1);
-            f32 CrossLength2 = CrossProduct2d(PixelEdge2, Edge2);
-            
-            if ((CrossLength0 > 0.0f || (IsTopLeft0 && CrossLength0 == 0.0f)) &&
-                (CrossLength1 > 0.0f || (IsTopLeft1 && CrossLength1 == 0.0f)) &&
-                (CrossLength2 > 0.0f || (IsTopLeft2 && CrossLength2 == 0.0f)))
+            if ((Edge0 > 0.0f || (IsTopLeft0 && Edge0 == 0.0f)) &&
+                (Edge1 > 0.0f || (IsTopLeft1 && Edge1 == 0.0f)) &&
+                (Edge2 > 0.0f || (IsTopLeft2 && Edge2 == 0.0f)))
             {
                 // NOTE: Ми у середині трикутника
                 u32 PixelId = Y * GlobalState.FrameBufferWidth + X;
 
-                f32 T0 = -CrossLength1 / BaryCentricDiv;
-                f32 T1 = -CrossLength2 / BaryCentricDiv;
-                f32 T2 = -CrossLength0 / BaryCentricDiv;
+                f32 T0 = -Edge1 / BaryCentricDiv;
+                f32 T1 = -Edge2 / BaryCentricDiv;
+                f32 T2 = -Edge0 / BaryCentricDiv;
 
                 f32 DepthZ = T0 * Vertex0.Pos.z + T1 * Vertex1.Pos.z + T2 * Vertex2.Pos.z;
                 if (DepthZ >= 0.0f && DepthZ <= 1.0f && DepthZ < GlobalState.DepthBuffer[PixelId])
                 {
-                    f32 OneOverW = T0 * (1.0f / Vertex0.Pos.w) + T1 * (1.0f / Vertex1.Pos.w) + T2 * (1.0f / Vertex2.Pos.w);
+                    f32 OneOverW = T0 * Vertex0.Pos.w + T1 * Vertex1.Pos.w + T2 * Vertex2.Pos.w;
 
-                    v2 Uv = T0 * (Vertex0.Uv / Vertex0.Pos.w) + T1 * (Vertex1.Uv / Vertex1.Pos.w) + T2 * (Vertex2.Uv / Vertex2.Pos.w);
+                    v2 Uv = T0 * Vertex0.Uv + T1 * Vertex1.Uv + T2 * Vertex2.Uv;
                     Uv /= OneOverW;
 
                     u32 TexelColor = 0;
@@ -172,7 +186,15 @@ void DrawTriangle(clip_vertex Vertex0, clip_vertex Vertex1, clip_vertex Vertex2,
                     GlobalState.DepthBuffer[PixelId] = DepthZ;
                 }
             }
+
+            Edge0 += Edge0DiffX;
+            Edge1 += Edge1DiffX;
+            Edge2 += Edge2DiffX;
         }
+
+        Edge0RowY += Edge0DiffY;
+        Edge1RowY += Edge1DiffY;
+        Edge2RowY += Edge2DiffY;
     }
 }
 
@@ -277,9 +299,9 @@ int APIENTRY WinMain(HINSTANCE hInstance,
         Assert(GetClientRect(GlobalState.WindowHandle, &ClientRect));
         GlobalState.FrameBufferWidth = ClientRect.right - ClientRect.left;
         GlobalState.FrameBufferHeight = ClientRect.bottom - ClientRect.top;
-
-        GlobalState.FrameBufferWidth = 300;
-        GlobalState.FrameBufferHeight = 300;
+            
+        GlobalState.FrameBufferWidth = 1200;
+        GlobalState.FrameBufferHeight = 1200;
         GlobalState.FrameBufferPixels = (u32*)malloc(sizeof(u32) * GlobalState.FrameBufferWidth *
                                                      GlobalState.FrameBufferHeight);
         GlobalState.DepthBuffer = (f32*)malloc(sizeof(f32) * GlobalState.FrameBufferWidth *
@@ -325,6 +347,12 @@ int APIENTRY WinMain(HINSTANCE hInstance,
         Assert(QueryPerformanceCounter(&EndTime));
         f32 FrameTime = f32(EndTime.QuadPart - BeginTime.QuadPart) / f32(TimerFrequency.QuadPart);
         BeginTime = EndTime;
+
+        {
+            char Text[256];
+            snprintf(Text, sizeof(Text), "FrameTime: %f\n", FrameTime);
+            OutputDebugStringA(Text);
+        }
         
         MSG Message = {};
         while (PeekMessageA(&Message, GlobalState.WindowHandle, 0, 0, PM_REMOVE))

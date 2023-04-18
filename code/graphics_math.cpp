@@ -43,12 +43,26 @@ v2 operator*(f32 A, v2 B)
     return Result;
 }
 
+v2 operator*(v2 B, f32 A)
+{
+    v2 Result = {};
+    Result.x = A * B.x;
+    Result.y = A * B.y;
+    return Result;
+}
+
 v2 operator*(v2 A, v2 B)
 {
     v2 Result = {};
     Result.x = A.x * B.x;
     Result.y = A.y * B.y;
     return Result;
+}
+
+v2 operator*=(v2& A, f32 B)
+{
+    A = A * B;
+    return A;
 }
 
 v2 operator/(v2 A, f32 B)
