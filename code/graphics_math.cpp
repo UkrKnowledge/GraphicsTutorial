@@ -1,4 +1,10 @@
 
+i64 Sign(i64 X)
+{
+    i64 Result = (X > 0) - (X < 0);
+    return Result;
+}
+
 //
 // NOTE: V2
 //
@@ -91,11 +97,35 @@ v2i V2I(f32 X, f32 Y)
     return Result;
 }
 
+v2i V2I(v2 A)
+{
+    v2i Result = {};
+    Result.x = (i32)A.x;
+    Result.y = (i32)A.y;
+    return Result;
+}
+
+v2i V2I_F24_8(v2 A)
+{
+    v2i Result = {};
+    Result.x = (i32)round(A.x * 256.0f);
+    Result.y = (i32)round(A.y * 256.0f);
+    return Result;
+}
+
 v2i operator+(v2i A, v2i B)
 {
     v2i Result = {};
     Result.x = A.x + B.x;
     Result.y = A.y + B.y;
+    return Result;
+}
+
+v2i operator-(v2i A, v2i B)
+{
+    v2i Result = {};
+    Result.x = A.x - B.x;
+    Result.y = A.y - B.y;
     return Result;
 }
 
