@@ -41,8 +41,8 @@ typedef int32_t b32;
 
 struct texture
 {
-    u32 Width;
-    u32 Height;
+    i32 Width;
+    i32 Height;
     u32* Texels;
 };
 
@@ -78,6 +78,7 @@ struct global_state
     HDC DeviceContext;
     u32 FrameBufferWidth;
     u32 FrameBufferHeight;
+    u32 FrameBufferStride;
     u32* FrameBufferPixels;
     f32* DepthBuffer;
     

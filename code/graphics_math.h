@@ -2,6 +2,28 @@
 
 global f32 Pi32 = 3.14159265359f;
 
+#include <xmmintrin.h>
+#include <emmintrin.h>
+#include <pmmintrin.h>
+#include <tmmintrin.h>
+#include <smmintrin.h>
+#include <nmmintrin.h>
+
+union i32_x4
+{
+    struct
+    {
+        __m128i Vals;
+    };
+
+    i32 e[4];
+};
+
+struct f32_x4
+{
+    __m128 Vals;
+};
+
 union v2
 {
     struct
@@ -12,6 +34,16 @@ union v2
     f32 e[2];
 };
 
+union v2_x4
+{
+    struct
+    {
+        f32_x4 x, y;
+    };
+
+    f32_x4 e[2];
+};
+
 union v2i
 {
     struct
@@ -20,6 +52,16 @@ union v2i
     };
 
     i32 e[2];
+};
+
+union v2i_x4
+{
+    struct
+    {
+        i32_x4 x, y;
+    };
+
+    i32_x4 e[2];
 };
 
 union v3
@@ -47,6 +89,33 @@ union v3
     };
 
     f32 e[3];
+};
+
+union v3_x4
+{
+    struct
+    {
+        f32_x4 x, y, z;
+    };
+
+    struct
+    {
+        f32_x4 r, g, b;
+    };
+
+    struct
+    {
+        v2_x4 xy;
+        f32_x4 Ignored0;
+    };
+
+    struct
+    {
+        f32_x4 Ignored1;
+        v2_x4 yz;
+    };
+
+    f32_x4 e[3];
 };
 
 union v4

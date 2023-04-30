@@ -6,6 +6,312 @@ i64 Sign(i64 X)
 }
 
 //
+// NOTE: I32_X4
+//
+
+i32_x4 I32X4(f32 X, f32 Y, f32 Z, f32 W)
+{
+    i32_x4 Result = {};
+    Result.Vals = _mm_set_epi32(W, Z, Y, X);
+    return Result;
+}
+
+i32_x4 I32X4(i32 X)
+{
+    i32_x4 Result = {};
+    Result.Vals = _mm_set1_epi32(X);
+    return Result;
+}
+
+i32_x4 I32X4(f32_x4 A)
+{
+    i32_x4 Result = {};
+    Result.Vals = _mm_cvtps_epi32(A.Vals);
+    return Result;
+}
+
+i32_x4 I32X4ReInterpret(f32_x4 X)
+{
+    i32_x4 Result = {};
+    Result.Vals = _mm_castps_si128(X.Vals);
+    return Result;
+}
+
+i32_x4 I32X4Load(i32* Ptr)
+{
+    i32_x4 Result = {};
+    Result.Vals = _mm_loadu_si128((__m128i*)Ptr);
+    return Result;
+}
+
+i32_x4 I32X4Gather(i32* Ptr, i32_x4 Offsets)
+{
+    i32_x4 Result = I32X4(Ptr[Offsets.e[0]], Ptr[Offsets.e[1]], Ptr[Offsets.e[2]], Ptr[Offsets.e[3]]);
+    return Result;
+}
+
+void I32X4Store(i32* Ptr, i32_x4 Values)
+{
+    _mm_storeu_si128((__m128i*)Ptr, Values.Vals);
+}
+
+i32_x4 operator+(i32_x4 A, i32_x4 B)
+{
+    i32_x4 Result = {};
+    Result.Vals = _mm_add_epi32(A.Vals, B.Vals);
+    return Result;
+}
+
+i32_x4 operator+(i32_x4 A, i32 B)
+{
+    i32_x4 Result = A + I32X4(B);
+    return Result;
+}
+
+i32_x4 operator+=(i32_x4& A, i32_x4 B)
+{
+    A = A + B;
+    return A;
+}
+
+i32_x4 operator-(i32_x4 A, i32_x4 B)
+{
+    i32_x4 Result = {};
+    Result.Vals = _mm_sub_epi32(A.Vals, B.Vals);
+    return Result;
+}
+
+i32_x4 operator*(i32_x4 A, i32_x4 B)
+{
+    i32_x4 Result = {};
+    Result.Vals = _mm_mullo_epi32(A.Vals, B.Vals);
+    return Result;
+}
+
+i32_x4 operator*(i32_x4 A, i32 B)
+{
+    i32_x4 Result = A * I32X4(B);
+    return Result;
+}
+
+i32_x4 operator|(i32_x4 A, i32_x4 B)
+{
+    i32_x4 Result = {};
+    Result.Vals = _mm_or_si128(A.Vals, B.Vals);
+    return Result;
+}
+
+i32_x4 operator&(i32_x4 A, i32_x4 B)
+{
+    i32_x4 Result = {};
+    Result.Vals = _mm_and_si128(A.Vals, B.Vals);
+    return Result;
+}
+
+i32_x4 operator&(i32_x4 A, i32 B)
+{
+    i32_x4 Result = A & I32X4(B);
+    return Result;
+}
+
+i32_x4 operator>=(i32_x4 A, i32_x4 B)
+{
+    i32_x4 Result = {};
+    Result.Vals = _mm_or_si128(_mm_cmpgt_epi32(A.Vals, B.Vals), _mm_cmpeq_epi32(A.Vals, B.Vals));
+    return Result;
+}
+
+i32_x4 operator<(i32_x4 A, i32_x4 B)
+{
+    i32_x4 Result = {};
+    Result.Vals = _mm_cmplt_epi32(A.Vals, B.Vals);
+    return Result;
+}
+
+i32_x4 operator<(i32_x4 A, i32 B)
+{
+    i32_x4 Result = A < I32X4(B);
+    return Result;
+}
+
+i32_x4 operator<<(i32_x4 A, i32 B)
+{
+    i32_x4 Result = {};
+    Result.Vals = _mm_sll_epi32(A.Vals, _mm_set_epi32(0, 0, 0, B));
+    return Result;
+}
+
+i32_x4 operator>>(i32_x4 A, i32 B)
+{
+    i32_x4 Result = {};
+    Result.Vals = _mm_srl_epi32(A.Vals, _mm_set_epi32(0, 0, 0, B));
+    return Result;
+}
+
+i32_x4 operator>=(i32_x4 A, i32 B)
+{
+    i32_x4 Result = A >= I32X4(B);
+    return Result;
+}
+
+i32_x4 AndNot(i32_x4 Mask, i32_x4 Value)
+{
+    i32_x4 Result = {};
+    Result.Vals = _mm_andnot_si128(Mask.Vals, Value.Vals);
+    return Result;
+}
+
+i32_x4 Min(i32_x4 A, i32_x4 B)
+{
+    i32_x4 Result = {};
+    Result.Vals = _mm_min_epi32(A.Vals, B.Vals);
+    return Result;
+}
+
+i32_x4 Min(i32_x4 A, i32 B)
+{
+    i32_x4 Result = Min(A, I32X4(B));
+    return Result;
+}
+
+i32_x4 Max(i32_x4 A, i32_x4 B)
+{
+    i32_x4 Result = {};
+    Result.Vals = _mm_max_epi32(A.Vals, B.Vals);
+    return Result;
+}
+
+i32_x4 Max(i32_x4 A, i32 B)
+{
+    i32_x4 Result = Max(A, I32X4(B));
+    return Result;
+}
+
+//
+// NOTE: F32_X4
+//
+
+f32_x4 F32X4(f32 X)
+{
+    f32_x4 Result = {};
+    Result.Vals = _mm_set1_ps(X);
+    return Result;
+}
+
+f32_x4 F32X4(i32_x4 X)
+{
+    f32_x4 Result = {};
+    Result.Vals = _mm_cvtepi32_ps(X.Vals);
+    return Result;
+}
+
+f32_x4 F32X4ReInterpret(i32_x4 X)
+{
+    f32_x4 Result = {};
+    Result.Vals = _mm_castsi128_ps(X.Vals);
+    return Result;
+}
+
+f32_x4 F32X4Load(f32* Ptr)
+{
+    f32_x4 Result = {};
+    Result.Vals = _mm_loadu_ps(Ptr);
+    return Result;
+}
+
+void F32X4Store(f32* Ptr, f32_x4 Values)
+{
+    _mm_storeu_ps(Ptr, Values.Vals);
+}
+
+f32_x4 operator+(f32_x4 A, f32_x4 B)
+{
+    f32_x4 Result = {};
+    Result.Vals = _mm_add_ps(A.Vals, B.Vals);
+    return Result;
+}
+
+f32_x4 operator-(f32_x4 A)
+{
+    f32_x4 Result = {};
+    Result.Vals = _mm_mul_ps(A.Vals, _mm_set1_ps(-1.0f));
+    return Result;
+}
+
+f32_x4 operator-(f32_x4 A, f32_x4 B)
+{
+    f32_x4 Result = {};
+    Result.Vals = _mm_sub_ps(A.Vals, B.Vals);
+    return Result;
+}
+
+f32_x4 operator-(f32_x4 A, f32 B)
+{
+    f32_x4 Result = A - F32X4(B);
+    return Result;
+}
+
+f32_x4 operator-(f32 A, f32_x4 B)
+{
+    f32_x4 Result = F32X4(A) - B;
+    return Result;
+}
+
+f32_x4 operator*(f32_x4 A, f32_x4 B)
+{
+    f32_x4 Result = {};
+    Result.Vals = _mm_mul_ps(A.Vals, B.Vals);
+    return Result;
+}
+
+f32_x4 operator*(f32_x4 A, f32 B)
+{
+    f32_x4 Result = A * F32X4(B);
+    return Result;
+}
+
+f32_x4 operator/(f32_x4 A, f32_x4 B)
+{
+    f32_x4 Result = {};
+    Result.Vals = _mm_div_ps(A.Vals, B.Vals);
+    return Result;
+}
+
+f32_x4 operator/(f32_x4 A, f32 B)
+{
+    f32_x4 Result = A / F32X4(B);
+    return Result;
+}
+
+f32_x4 operator&(f32_x4 A, f32_x4 B)
+{
+    f32_x4 Result = {};
+    Result.Vals = _mm_and_ps(A.Vals, B.Vals);
+    return Result;
+}
+
+f32_x4 operator<(f32_x4 A, f32_x4 B)
+{
+    f32_x4 Result = {};
+    Result.Vals = _mm_cmplt_ps(A.Vals, B.Vals);
+    return Result;
+}
+
+f32_x4 AndNot(f32_x4 Mask, f32_x4 Value)
+{
+    f32_x4 Result = {};
+    Result.Vals = _mm_andnot_ps(Mask.Vals, Value.Vals);
+    return Result;
+}
+
+f32_x4 Floor(f32_x4 A)
+{
+    f32_x4 Result = {};
+    Result.Vals = _mm_floor_ps(A.Vals);
+    return Result;
+}
+
+//
 // NOTE: V2
 //
 
@@ -86,7 +392,59 @@ v2 operator/=(v2& A, f32 B)
 }
 
 //
-// NOTE: V2
+// NOTE: V2_X4
+//
+
+v2_x4 operator+(v2_x4 A, v2_x4 B)
+{
+    v2_x4 Result = {};
+    Result.x = A.x + B.x;
+    Result.y = A.y + B.y;
+    return Result;
+}
+
+v2_x4 operator-(v2_x4 A, v2_x4 B)
+{
+    v2_x4 Result = {};
+    Result.x = A.x - B.x;
+    Result.y = A.y - B.y;
+    return Result;
+}
+
+v2_x4 operator-(v2_x4 A, v2 B)
+{
+    v2_x4 Result = {};
+    Result.x = A.x - B.x;
+    Result.y = A.y - B.y;
+    return Result;
+}
+
+v2_x4 operator*(f32_x4 A, v2 B)
+{
+    v2_x4 Result = {};
+    Result.x = A * B.x;
+    Result.y = A * B.y;
+    return Result;
+}
+
+v2_x4 operator*(v2_x4 A, v2 B)
+{
+    v2_x4 Result = {};
+    Result.x = A.x * B.x;
+    Result.y = A.y * B.y;
+    return Result;
+}
+
+v2_x4 operator/(v2_x4 A, f32_x4 B)
+{
+    v2_x4 Result = {};
+    Result.x = A.x / B;
+    Result.y = A.y / B;
+    return Result;
+}
+
+//
+// NOTE: V2I
 //
 
 v2i V2I(f32 X, f32 Y)
@@ -126,6 +484,26 @@ v2i operator-(v2i A, v2i B)
     v2i Result = {};
     Result.x = A.x - B.x;
     Result.y = A.y - B.y;
+    return Result;
+}
+
+//
+// NOTE: V2IX4
+//
+
+v2i_x4 V2IX4(f32_x4 A, f32_x4 B)
+{
+    v2i_x4 Result = {};
+    Result.x = I32X4(A);
+    Result.y = I32X4(B);
+    return Result;
+}
+
+v2i_x4 operator+(v2i_x4 A, v2i B)
+{
+    v2i_x4 Result = {};
+    Result.x = A.x + B.x;
+    Result.y = A.y + B.y;
     return Result;
 }
 
@@ -230,6 +608,61 @@ v3 Normalize(v3 A)
 v3 Lerp(v3 A, v3 B, f32 T)
 {
     v3 Result = (1.0f - T) * A + T * B;
+    return Result;
+}
+
+//
+// NOTE: V3
+//
+
+v3_x4 V3X4(f32 A)
+{
+    v3_x4 Result = {};
+    Result.x = F32X4(A);
+    Result.y = F32X4(A);
+    Result.z = F32X4(A);
+    return Result;
+}
+
+v3_x4 operator+(v3_x4 A, v3_x4 B)
+{
+    v3_x4 Result = {};
+    Result.x = A.x + B.x;
+    Result.y = A.y + B.y;
+    Result.z = A.z + B.z;
+    return Result;
+}
+
+v3_x4 operator*(v3_x4 A, f32 B)
+{
+    v3_x4 Result = {};
+    Result.x = A.x * B;
+    Result.y = A.y * B;
+    Result.z = A.z * B;
+    return Result;
+}
+
+v3_x4 operator*(f32_x4 A, v3_x4 B)
+{
+    v3_x4 Result = {};
+    Result.x = A * B.x;
+    Result.y = A * B.y;
+    Result.z = A * B.z;
+    return Result;
+}
+
+v3_x4 operator/(v3_x4 A, f32 B)
+{
+    v3_x4 Result = {};
+    Result.x = A.x / B;
+    Result.y = A.y / B;
+    Result.z = A.z / B;
+    return Result;
+}
+
+v3_x4 Lerp(v3_x4 A, v3_x4 B, f32_x4 T)
+{
+    v3_x4 Result = (1.0f - T) * A + T * B;
     return Result;
 }
 
