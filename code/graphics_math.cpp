@@ -231,6 +231,12 @@ f32_x4 operator+(f32_x4 A, f32_x4 B)
     return Result;
 }
 
+f32_x4 operator+(f32 A, f32_x4 B)
+{
+    f32_x4 Result = F32X4(A) + B;
+    return Result;
+}
+
 f32_x4 operator-(f32_x4 A)
 {
     f32_x4 Result = {};
@@ -395,6 +401,14 @@ v2 operator/=(v2& A, f32 B)
 // NOTE: V2_X4
 //
 
+v2_x4 V2X4(v2i_x4 A)
+{
+    v2_x4 Result = {};
+    Result.x = F32X4(A.x);
+    Result.y = F32X4(A.y);
+    return Result;
+}
+
 v2_x4 operator+(v2_x4 A, v2_x4 B)
 {
     v2_x4 Result = {};
@@ -440,6 +454,22 @@ v2_x4 operator/(v2_x4 A, f32_x4 B)
     v2_x4 Result = {};
     Result.x = A.x / B;
     Result.y = A.y / B;
+    return Result;
+}
+
+v2_x4 operator/(v2_x4 A, v2 B)
+{
+    v2_x4 Result = {};
+    Result.x = A.x / B.x;
+    Result.y = A.y / B.y;
+    return Result;
+}
+
+v2_x4 Floor(v2_x4 A)
+{
+    v2_x4 Result = {};
+    Result.x = Floor(A.x);
+    Result.y = Floor(A.y);
     return Result;
 }
 
@@ -499,6 +529,14 @@ v2i_x4 V2IX4(f32_x4 A, f32_x4 B)
     return Result;
 }
 
+v2i_x4 V2IX4(v2_x4 A)
+{
+    v2i_x4 Result = {};
+    Result.x = I32X4(A.x);
+    Result.y = I32X4(A.y);
+    return Result;
+}
+
 v2i_x4 operator+(v2i_x4 A, v2i B)
 {
     v2i_x4 Result = {};
@@ -517,6 +555,15 @@ v3 V3(f32 X, f32 Y, f32 Z)
     Result.x = X;
     Result.y = Y;
     Result.z = Z;
+    return Result;
+}
+
+v3 V3(f32 A)
+{
+    v3 Result = {};
+    Result.x = A;
+    Result.y = A;
+    Result.z = A;
     return Result;
 }
 

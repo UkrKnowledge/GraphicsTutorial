@@ -38,13 +38,7 @@ typedef int32_t b32;
 
 #include "graphics_math.h"
 #include "clipper.h"
-
-struct texture
-{
-    i32 Width;
-    i32 Height;
-    u32* Texels;
-};
+#include "assets.h"
 
 enum sampler_type
 {
@@ -89,6 +83,10 @@ struct global_state
     b32 SDown;
     b32 DDown;
     camera Camera;
+
+    model CubeModel;
+    model DuckModel;
+    model SponzaModel;
 };
 
 #define WIN32_GRAPHICS_H

@@ -19,9 +19,14 @@ union i32_x4
     i32 e[4];
 };
 
-struct f32_x4
+union f32_x4
 {
-    __m128 Vals;
+    struct
+    {
+        __m128 Vals;
+    };
+
+    f32 e[4];
 };
 
 union v2

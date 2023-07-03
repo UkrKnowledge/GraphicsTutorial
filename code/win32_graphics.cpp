@@ -5,6 +5,7 @@
 #include "win32_graphics.h"
 #include "graphics_math.cpp"
 #include "clipper.cpp"
+#include "assets.cpp"
 
 global global_state GlobalState;
 
@@ -43,9 +44,9 @@ u32 ColorRgbToU32(v3 Color)
 v3_x4 ColorI32ToRgb(i32_x4 Color)
 {
     v3_x4 Result = {};
-    Result.r = F32X4((Color >> 16) & 0xFF);
+    Result.b = F32X4((Color >> 16) & 0xFF);
     Result.g = F32X4((Color >> 8) & 0xFF);
-    Result.b = F32X4((Color >> 0) & 0xFF);
+    Result.r = F32X4((Color >> 0) & 0xFF);
     Result = Result / 255.0f;
     return Result;
 }
@@ -158,15 +159,15 @@ void DrawTriangle(clip_vertex Vertex0, clip_vertex Vertex1, clip_vertex Vertex2,
                 f32_x4 T0 = -F32X4(Edge1RowX) * BaryCentricDiv;
                 f32_x4 T1 = -F32X4(Edge2RowX) * BaryCentricDiv;
                 f32_x4 T2 = -F32X4(Edge0RowX) * BaryCentricDiv;
-
-                f32_x4 DepthZ = T0 * Vertex0.Pos.z + T1 * Vertex1.Pos.z + T2 * Vertex2.Pos.z;
+                
+                f32_x4 DepthZ = Vertex0.Pos.z + T1 * (Vertex1.Pos.z - Vertex0.Pos.z) + T2 * (Vertex2.Pos.z - Vertex0.Pos.z);
                 i32_x4 DepthMask = I32X4ReInterpret(DepthZ < PixelDepths);
             
                 f32_x4 OneOverW = T0 * Vertex0.Pos.w + T1 * Vertex1.Pos.w + T2 * Vertex2.Pos.w;
 
                 v2_x4 Uv = T0 * Vertex0.Uv + T1 * Vertex1.Uv + T2 * Vertex2.Uv;
                 Uv = Uv / OneOverW;
-
+                
                 i32_x4 TexelColor = I32X4(0);
                 switch (Sampler.Type)
                 {
@@ -190,6 +191,7 @@ void DrawTriangle(clip_vertex Vertex0, clip_vertex Vertex1, clip_vertex Vertex2,
 
                     case SamplerType_Bilinear:
                     {
+#if 0
                         v2_x4 TexelV2 = Uv * V2(Texture.Width, Texture.Height) - V2(0.5f, 0.5f);
                         v2i_x4 TexelPos[4] = {};
                         TexelPos[0] = V2IX4(Floor(TexelV2.x), Floor(TexelV2.y));
@@ -214,7 +216,33 @@ void DrawTriangle(clip_vertex Vertex0, clip_vertex Vertex1, clip_vertex Vertex2,
 
                             TexelColors[TexelId] = ColorI32ToRgb(TexelColorI32);
                         }
+#else
+                        v2_x4 TexelV2 = Uv * V2(Texture.Width, Texture.Height) - V2(0.5f, 0.5f);
+                        v2i_x4 TexelPos[4] = {};
+                        TexelPos[0] = V2IX4(Floor(TexelV2.x), Floor(TexelV2.y));
+                        TexelPos[1] = TexelPos[0] + V2I(1, 0);
+                        TexelPos[2] = TexelPos[0] + V2I(0, 1);
+                        TexelPos[3] = TexelPos[0] + V2I(1, 1);
 
+                        v3_x4 TexelColors[4] = {};
+                        for (u32 TexelId = 0; TexelId < ArrayCount(TexelPos); ++TexelId)
+                        {
+                            v2i_x4 CurrTexelPos = TexelPos[TexelId];
+                            {
+                                v2_x4 CurrTexelPosF = V2X4(CurrTexelPos);
+                                v2_x4 Factor = Floor(CurrTexelPosF / V2(Texture.Width, Texture.Height));
+                                CurrTexelPosF = CurrTexelPosF - Factor * V2(Texture.Width, Texture.Height);
+                                CurrTexelPos = V2IX4(CurrTexelPosF);
+                            }
+
+                            i32_x4 TexelOffsets = CurrTexelPos.y * Texture.Width + CurrTexelPos.x;
+                            i32_x4 LoadMask = EdgeMask & DepthMask;
+                            TexelOffsets = (TexelOffsets & LoadMask) + AndNot(LoadMask, I32X4(0));
+                            i32_x4 TexelColorI32 = I32X4Gather((i32*)Texture.Texels, TexelOffsets);
+
+                            TexelColors[TexelId] = ColorI32ToRgb(TexelColorI32);
+                        }
+#endif
                         f32_x4 S = TexelV2.x - Floor(TexelV2.x);
                         f32_x4 K = TexelV2.y - Floor(TexelV2.y);
 
@@ -276,6 +304,40 @@ void DrawTriangle(v4 ModelVertex0, v4 ModelVertex1, v4 ModelVertex2,
         DrawTriangle(Pong.Vertices[3*TriangleId + 0], Pong.Vertices[3*TriangleId + 1],
                      Pong.Vertices[3*TriangleId + 2], Texture, Sampler);
     }
+}
+
+void DrawModel(model* Model, m4 Transform, sampler Sampler)
+{
+    v4* TransformedVertices = (v4*)malloc(sizeof(v4) * Model->VertexCount);
+    for (u32 VertexId = 0; VertexId < Model->VertexCount; ++VertexId)
+    {
+        TransformedVertices[VertexId] = (Transform * V4(Model->VertexArray[VertexId].Pos, 1.0f));
+    }
+
+    for (u32 MeshId = 0; MeshId < Model->NumMeshes; ++MeshId)
+    {
+        mesh* CurrMesh = Model->MeshArray + MeshId;
+        texture CurrTexture = Model->TextureArray[CurrMesh->TextureId];
+        
+        for (u32 IndexId = 0; IndexId < CurrMesh->IndexCount; IndexId += 3)
+        {
+            u32 Index0 = Model->IndexArray[CurrMesh->IndexOffset + IndexId + 0];
+            u32 Index1 = Model->IndexArray[CurrMesh->IndexOffset + IndexId + 1];
+            u32 Index2 = Model->IndexArray[CurrMesh->IndexOffset + IndexId + 2];
+
+            v4 Pos0 = TransformedVertices[CurrMesh->VertexOffset + Index0];
+            v4 Pos1 = TransformedVertices[CurrMesh->VertexOffset + Index1];
+            v4 Pos2 = TransformedVertices[CurrMesh->VertexOffset + Index2];
+
+            v2 Uv0 = Model->VertexArray[CurrMesh->VertexOffset + Index0].Uv;
+            v2 Uv1 = Model->VertexArray[CurrMesh->VertexOffset + Index1].Uv;
+            v2 Uv2 = Model->VertexArray[CurrMesh->VertexOffset + Index2].Uv;
+            
+            DrawTriangle(Pos0, Pos1, Pos2, Uv0, Uv1, Uv2, CurrTexture, Sampler);
+        }
+    }
+
+    free(TransformedVertices);
 }
 
 LRESULT Win32WindowCallBack(
@@ -362,6 +424,68 @@ int APIENTRY WinMain(HINSTANCE hInstance,
                                                      GlobalState.FrameBufferHeight);
     }
 
+    {
+        local_global vertex ModelVertices[] =
+        {
+            // NOTE: Front Face
+            { V3(-0.5f, -0.5f, -0.5f), V2(0, 0) },
+            { V3(-0.5f, 0.5f, -0.5f), V2(1, 0) },
+            { V3(0.5f, 0.5f, -0.5f), V2(1, 1) },
+            { V3(0.5f, -0.5f, -0.5f), V2(0, 1) },
+
+            // NOTE: Back Face
+            { V3(-0.5f, -0.5f, 0.5f), V2(0, 0) },
+            { V3(-0.5f, 0.5f, 0.5f), V2(1, 0) },
+            { V3(0.5f, 0.5f, 0.5f), V2(1, 1) }, 
+            { V3(0.5f, -0.5f, 0.5f), V2(0, 1) },
+        };
+
+        local_global u32 ModelIndices[] =
+        {
+            // NOTE: Front Face
+            0, 1, 2,
+            2, 3, 0,
+
+            // NOTE: Back Face
+            6, 5, 4,
+            4, 7, 6,
+
+            // NOTE: Left face
+            4, 5, 1,
+            1, 0, 4,
+
+            // NOTE: Right face
+            3, 2, 6,
+            6, 7, 3,
+
+            // NOTE: Top face
+            1, 5, 6,
+            6, 2, 1,
+
+            // NOTE: Bottom face
+            4, 0, 3,
+            3, 7, 4,
+        };
+                
+        local_global mesh Mesh = {};
+        Mesh.IndexOffset = 0;
+        Mesh.IndexCount = ArrayCount(ModelIndices);
+        Mesh.VertexOffset = 0;
+        Mesh.VertexCount = ArrayCount(ModelVertices);
+        
+        GlobalState.CubeModel = {};
+        GlobalState.CubeModel.NumMeshes = 1;
+        GlobalState.CubeModel.MeshArray = &Mesh;
+
+        GlobalState.CubeModel.VertexCount = ArrayCount(ModelVertices);
+        GlobalState.CubeModel.VertexArray = ModelVertices;
+        GlobalState.CubeModel.IndexCount = ArrayCount(ModelIndices);
+        GlobalState.CubeModel.IndexArray = ModelIndices;
+    }
+
+    GlobalState.DuckModel = AssetLoadModel("Duck\\", "Duck.gltf");
+    GlobalState.SponzaModel = AssetLoadModel("Sponza\\", "Sponza.gltf");
+    
     texture CheckerBoardTexture = {};
     sampler Sampler = {};
     {
@@ -565,87 +689,15 @@ int APIENTRY WinMain(HINSTANCE hInstance,
         {
             GlobalState.CurrTime -= 2.0f * 3.14159f;
         }
-        
-        v3 ModelVertices[] =
-        {
-            // NOTE: Front Face
-            V3(-0.5f, -0.5f, -0.5f),
-            V3(-0.5f, 0.5f, -0.5f),
-            V3(0.5f, 0.5f, -0.5f),
-            V3(0.5f, -0.5f, -0.5f),
-
-            // NOTE: Back Face
-            V3(-0.5f, -0.5f, 0.5f),
-            V3(-0.5f, 0.5f, 0.5f),
-            V3(0.5f, 0.5f, 0.5f),
-            V3(0.5f, -0.5f, 0.5f),
-        };
-        
-        v2 ModelUvs[] =
-        {
-            V2(0, 0),
-            V2(1, 0),
-            V2(1, 1),
-            V2(0, 1),
-
-            V2(0, 0),
-            V2(1, 0),
-            V2(1, 1),
-            V2(0, 1),
-        };
-
-        u32 ModelIndices[] =
-        {
-            // NOTE: Front Face
-            0, 1, 2,
-            2, 3, 0,
-
-            // NOTE: Back Face
-            6, 5, 4,
-            4, 7, 6,
-
-            // NOTE: Left face
-            4, 5, 1,
-            1, 0, 4,
-
-            // NOTE: Right face
-            3, 2, 6,
-            6, 7, 3,
-
-            // NOTE: Top face
-            1, 5, 6,
-            6, 2, 1,
-
-            // NOTE: Bottom face
-            4, 0, 3,
-            3, 7, 4,
-        };
-        
+                
         f32 Offset = abs(sin(GlobalState.CurrTime));
         m4 Transform = (PerspectiveMatrix(60.0f, AspectRatio, 0.01f, 1000.0f) *
                         CameraTransform *
-                        TranslationMatrix(0, 0, 2) *
-                        RotationMatrix(0, 0, GlobalState.CurrTime) *
+                        TranslationMatrix(0, 0, 1) *
+                        RotationMatrix(0, Pi32 * 0.5f, 0) *
                         ScaleMatrix(1, 1, 1));
 
-        v4* TransformedVertices = (v4*)malloc(sizeof(v4) * ArrayCount(ModelVertices));
-        for (u32 VertexId = 0; VertexId < ArrayCount(ModelVertices); ++VertexId)
-        {
-            TransformedVertices[VertexId] = (Transform * V4(ModelVertices[VertexId], 1.0f));
-        }
-        
-        for (u32 IndexId = 0; IndexId < ArrayCount(ModelIndices); IndexId += 3)
-        {
-            u32 Index0 = ModelIndices[IndexId + 0];
-            u32 Index1 = ModelIndices[IndexId + 1];
-            u32 Index2 = ModelIndices[IndexId + 2];
-            
-            DrawTriangle(TransformedVertices[Index0], TransformedVertices[Index1], TransformedVertices[Index2],
-                         ModelUvs[Index0], ModelUvs[Index1], ModelUvs[Index2],
-                         CheckerBoardTexture, Sampler);
-        }
-
-        free(TransformedVertices);
+        DrawModel(&GlobalState.SponzaModel, Transform, Sampler);
         
         BITMAPINFO BitmapInfo = {};
         BitmapInfo.bmiHeader.biSize = sizeof(tagBITMAPINFOHEADER);
