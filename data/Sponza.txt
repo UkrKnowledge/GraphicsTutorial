@@ -1,1 +1,0 @@
-Sponzа мусите отримати самі, бо розмір файлів завеликим щоби тут зберігати: https://github.com/KhronosGroup/glTF-Sample-Models/tree/master/2.0/Sponza
