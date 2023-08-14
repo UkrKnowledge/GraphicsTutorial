@@ -39,20 +39,8 @@ typedef int32_t b32;
 #include "graphics_math.h"
 #include "clipper.h"
 #include "assets.h"
-
-enum sampler_type
-{
-    SamplerType_None,
-
-    SamplerType_Nearest,
-    SamplerType_Bilinear,
-};
-
-struct sampler
-{
-    sampler_type Type;
-    u32 BorderColor;
-};
+#include "sw_rasterizer.h"
+#include "dx12_rasterizer.h"
 
 struct camera
 {
@@ -65,16 +53,18 @@ struct camera
     v3 Pos;
 };
 
+enum rasterizer_type
+{
+    RasterizerType_None,
+
+    RasterizerType_Software,
+    RasterizerType_Dx12,
+};
+
 struct global_state
 {
     b32 IsRunning;
     HWND WindowHandle;
-    HDC DeviceContext;
-    u32 FrameBufferWidth;
-    u32 FrameBufferHeight;
-    u32 FrameBufferStride;
-    u32* FrameBufferPixels;
-    f32* DepthBuffer;
     
     f32 CurrTime;
 
@@ -87,6 +77,10 @@ struct global_state
     model CubeModel;
     model DuckModel;
     model SponzaModel;
+
+    rasterizer_type RasterizerType;
+    sw_rasterizer SwRasterizer;
+    dx12_rasterizer Dx12Rasterizer;
 };
 
 #define WIN32_GRAPHICS_H
