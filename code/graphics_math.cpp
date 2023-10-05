@@ -1,4 +1,10 @@
 
+u64 Align(u64 Location, u64 Alignment)
+{
+    u64 Result = (Location + (Alignment - 1)) & (~(Alignment - 1));
+    return Result;
+}
+
 i64 Sign(i64 X)
 {
     i64 Result = (X > 0) - (X < 0);

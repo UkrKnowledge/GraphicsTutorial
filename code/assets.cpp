@@ -12,7 +12,7 @@ char* CombineStrings(const char* Str1, const char* Str2)
     return Result;
 }
 
-model AssetLoadModel(char* FolderPath, char* FileName)
+model AssetLoadModel(dx12_rasterizer* Dx12Rasterizer, char* FolderPath, char* FileName)
 {
     model Result = {};
 
@@ -74,6 +74,23 @@ model AssetLoadModel(char* FolderPath, char* FileName)
                 }
             }
 
+            // NOTE: Копюємо дані до Upload Heap
+            {
+                D3D12_RESOURCE_DESC Desc = {};
+                Desc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+                Desc.Width = CurrTexture->Width;
+                Desc.Height = CurrTexture->Height;
+                Desc.DepthOrArraySize = 1;
+                Desc.MipLevels = 1;
+                Desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+                Desc.SampleDesc.Count = 1;
+                Desc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
+                CurrTexture->GpuTexture = Dx12CreateTextureAsset(Dx12Rasterizer,
+                                                                 &Desc,
+                                                                 D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
+                                                                 (u8*)CurrTexture->Texels);
+            }
+            
             stbi_image_free(UnFlippedTexels);
             
             CurrTextureId += 1;
@@ -137,7 +154,7 @@ model AssetLoadModel(char* FolderPath, char* FileName)
             CurrIndices[2] = SrcMesh->mFaces[FaceId].mIndices[2];
         }
     }
-
+    
     for (u32 VertexId = 0; VertexId < Result.VertexCount; ++VertexId)
     {
         vertex* CurrVertex = Result.VertexArray + VertexId;
@@ -145,6 +162,36 @@ model AssetLoadModel(char* FolderPath, char* FileName)
         // NOTE: Результат є між [0, 1]
         CurrVertex->Pos = (CurrVertex->Pos - V3(MinDistAxis)) / (MaxDistAxis - MinDistAxis);
         CurrVertex->Pos = CurrVertex->Pos - V3(0.5f);
+    }
+
+    {
+        D3D12_RESOURCE_DESC Desc = {};
+        Desc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+        Desc.Width = Result.VertexCount * sizeof(vertex);
+        Desc.Height = 1;
+        Desc.DepthOrArraySize = 1;
+        Desc.MipLevels = 1;
+        Desc.Format = DXGI_FORMAT_UNKNOWN;
+        Desc.SampleDesc.Count = 1;
+        Desc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+        Result.GpuVertexBuffer = Dx12CreateBufferAsset(Dx12Rasterizer, &Desc,
+                                                       D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER,
+                                                       Result.VertexArray);
+    }
+    
+    {
+        D3D12_RESOURCE_DESC Desc = {};
+        Desc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+        Desc.Width = Result.IndexCount * sizeof(u32);
+        Desc.Height = 1;
+        Desc.DepthOrArraySize = 1;
+        Desc.MipLevels = 1;
+        Desc.Format = DXGI_FORMAT_UNKNOWN;
+        Desc.SampleDesc.Count = 1;
+        Desc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+        Result.GpuIndexBuffer = Dx12CreateBufferAsset(Dx12Rasterizer, &Desc,
+                                                      D3D12_RESOURCE_STATE_INDEX_BUFFER,
+                                                      Result.IndexArray);
     }
     
     return Result;

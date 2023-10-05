@@ -5,9 +5,9 @@
 #include "win32_graphics.h"
 #include "graphics_math.cpp"
 #include "clipper.cpp"
+#include "dx12_rasterizer.cpp"
 #include "assets.cpp"
 #include "sw_rasterizer.cpp"
-#include "dx12_rasterizer.cpp"
 
 global global_state GlobalState;
 
@@ -141,8 +141,8 @@ int APIENTRY WinMain(HINSTANCE hInstance,
         GlobalState.CubeModel.IndexArray = ModelIndices;
     }
 
-    GlobalState.DuckModel = AssetLoadModel("Duck\\", "Duck.gltf");
-    GlobalState.SponzaModel = AssetLoadModel("Sponza\\", "Sponza.gltf");
+    GlobalState.DuckModel = AssetLoadModel(&GlobalState.Dx12Rasterizer, "Duck\\", "Duck.gltf");
+    GlobalState.SponzaModel = AssetLoadModel(&GlobalState.Dx12Rasterizer, "Sponza\\", "Sponza.gltf");
     
     texture CheckerBoardTexture = {};
     sampler Sampler = {};
@@ -172,6 +172,33 @@ int APIENTRY WinMain(HINSTANCE hInstance,
                 }
             }
         }
+    }
+
+    switch (GlobalState.RasterizerType)
+    {
+        case RasterizerType_Dx12:
+        {
+            dx12_rasterizer* Rasterizer = &GlobalState.Dx12Rasterizer;
+            ID3D12GraphicsCommandList* CommandList = Rasterizer->CommandList;
+            
+            ThrowIfFailed(CommandList->Close());
+            Rasterizer->CommandQueue->ExecuteCommandLists(1, (ID3D12CommandList**)&CommandList);
+
+            Rasterizer->FenceValue += 1;
+            ThrowIfFailed(Rasterizer->CommandQueue->Signal(Rasterizer->Fence, Rasterizer->FenceValue));
+            if (Rasterizer->Fence->GetCompletedValue() != Rasterizer->FenceValue)
+            {
+                // NOTE: Чекаємо аж поки значення у паркані не дорівнює FenceValue
+                HANDLE FenceEvent = {};
+                ThrowIfFailed(Rasterizer->Fence->SetEventOnCompletion(Rasterizer->FenceValue, FenceEvent));
+                WaitForSingleObject(FenceEvent, INFINITE);
+            }
+
+            ThrowIfFailed(Rasterizer->CommandAllocator->Reset());
+            ThrowIfFailed(CommandList->Reset(Rasterizer->CommandAllocator, 0));
+
+            Dx12ClearUploadArena(&Rasterizer->UploadArena);
+        } break;
     }
     
     LARGE_INTEGER BeginTime = {};
@@ -403,6 +430,7 @@ int APIENTRY WinMain(HINSTANCE hInstance,
                 
                 const FLOAT Color[4] = { 1, 0, 1, 1 };
                 CommandList->ClearRenderTargetView(Rasterizer->FrameBufferDescriptors[Rasterizer->CurrentFrameIndex], Color, 0, nullptr);
+                CommandList->ClearDepthStencilView(Rasterizer->DepthDescriptor, D3D12_CLEAR_FLAG_DEPTH, 1, 0, 0, 0);
 
                 {
                     D3D12_RESOURCE_BARRIER Barrier = {};

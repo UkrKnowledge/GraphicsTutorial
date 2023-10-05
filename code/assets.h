@@ -24,6 +24,8 @@ struct texture
     i32 Width;
     i32 Height;
     u32* Texels;
+
+    ID3D12Resource* GpuTexture;
 };
 
 struct mesh
@@ -47,6 +49,9 @@ struct model
     vertex* VertexArray;
     u32 IndexCount;
     u32* IndexArray;
+
+    ID3D12Resource* GpuVertexBuffer;
+    ID3D12Resource* GpuIndexBuffer;
 };
 
 #define ASSETS_H

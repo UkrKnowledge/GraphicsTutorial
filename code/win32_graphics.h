@@ -38,9 +38,9 @@ typedef int32_t b32;
 
 #include "graphics_math.h"
 #include "clipper.h"
+#include "dx12_rasterizer.h"
 #include "assets.h"
 #include "sw_rasterizer.h"
-#include "dx12_rasterizer.h"
 
 struct camera
 {
