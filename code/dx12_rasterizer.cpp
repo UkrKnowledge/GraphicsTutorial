@@ -92,7 +92,8 @@ u32 Dx12GetBytesPerPixel(DXGI_FORMAT Format)
 
 dx12_descriptor_heap Dx12DescriptorHeapCreate(dx12_rasterizer* Rasterizer,
                                               D3D12_DESCRIPTOR_HEAP_TYPE Type,
-                                              u64 NumDescriptors)
+                                              u64 NumDescriptors,
+                                              D3D12_DESCRIPTOR_HEAP_FLAGS Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE)
 {
     dx12_descriptor_heap Result = {};
     ID3D12Device* Device = Rasterizer->Device;
@@ -103,21 +104,33 @@ dx12_descriptor_heap Dx12DescriptorHeapCreate(dx12_rasterizer* Rasterizer,
     D3D12_DESCRIPTOR_HEAP_DESC Desc = {};
     Desc.Type = Type;
     Desc.NumDescriptors = NumDescriptors;
-    Desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
+    Desc.Flags = Flags;
     ThrowIfFailed(Device->CreateDescriptorHeap(&Desc, IID_PPV_ARGS(&Result.Heap)));
     
     return Result;
 }
 
-D3D12_CPU_DESCRIPTOR_HANDLE Dx12DescriptorAllocate(dx12_descriptor_heap* Heap)
+void Dx12DescriptorAllocate(dx12_descriptor_heap* Heap,
+                            D3D12_CPU_DESCRIPTOR_HANDLE* OutCpuHandle,
+                            D3D12_GPU_DESCRIPTOR_HANDLE* OutGpuHandle)
 {
     Assert(Heap->CurrElement < Heap->MaxNumElements);
-    D3D12_CPU_DESCRIPTOR_HANDLE Result = Heap->Heap->GetCPUDescriptorHandleForHeapStart();
-    Result.ptr += Heap->StepSize * Heap->CurrElement;
+    
+    if (OutCpuHandle)
+    {
+        D3D12_CPU_DESCRIPTOR_HANDLE CpuHandle = Heap->Heap->GetCPUDescriptorHandleForHeapStart();
+        CpuHandle.ptr += Heap->StepSize * Heap->CurrElement;
+        *OutCpuHandle = CpuHandle;
+    }
+
+    if (OutGpuHandle)
+    {
+        D3D12_GPU_DESCRIPTOR_HANDLE GpuHandle = Heap->Heap->GetGPUDescriptorHandleForHeapStart();
+        GpuHandle.ptr += Heap->StepSize * Heap->CurrElement;
+        *OutGpuHandle = GpuHandle;
+    }
 
     Heap->CurrElement += 1;
-
-    return Result;
 }
 
 //
@@ -215,6 +228,47 @@ void Dx12ClearUploadArena(dx12_upload_arena* Arena)
 //
 // NOTE: Творення Ресурсів зі копiювання
 //
+
+void Dx12CopyDataToBuffer(dx12_rasterizer* Rasterizer,
+                          D3D12_RESOURCE_STATES StartState,
+                          D3D12_RESOURCE_STATES EndState,
+                          void* Data,
+                          u64 DataSize,
+                          ID3D12Resource* GpuBuffer)
+{
+    ID3D12Device* Device = Rasterizer->Device;
+    ID3D12GraphicsCommandList* CommandList = Rasterizer->CommandList;
+
+    u64 UploadOffset = 0;
+    {
+        u8* Dest = Dx12UploadArenaPushSize(&Rasterizer->UploadArena, DataSize, &UploadOffset);
+        memcpy(Dest, Data, DataSize);
+    }
+
+    // NOTE: Барєр щоби перетворити стан текстури
+    {
+        D3D12_RESOURCE_BARRIER Barrier = {};
+        Barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+        Barrier.Transition.pResource = GpuBuffer;
+        Barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+        Barrier.Transition.StateBefore = StartState;
+        Barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_COPY_DEST;
+        CommandList->ResourceBarrier(1, &Barrier);
+    }
+
+    CommandList->CopyBufferRegion(GpuBuffer, 0, Rasterizer->UploadArena.GpuBuffer, UploadOffset, DataSize);
+
+    // NOTE: Барєр щоби перетворити стан текстури
+    {
+        D3D12_RESOURCE_BARRIER Barrier = {};
+        Barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+        Barrier.Transition.pResource = GpuBuffer;
+        Barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+        Barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
+        Barrier.Transition.StateAfter = EndState;
+        CommandList->ResourceBarrier(1, &Barrier);
+    }
+}
 
 ID3D12Resource* Dx12CreateBufferAsset(dx12_rasterizer* Rasterizer,
                                       D3D12_RESOURCE_DESC* Desc,
@@ -322,13 +376,39 @@ ID3D12Resource* Dx12CreateTextureAsset(dx12_rasterizer* Rasterizer,
     return Result;
 }
 
+//
+// NOTE: Функції з шейдерами
+//
+
+D3D12_SHADER_BYTECODE Dx12LoadShader(char* FileName)
+{
+    D3D12_SHADER_BYTECODE Result = {};
+    
+    FILE* File = fopen(FileName, "rb");
+    Assert(File);
+
+    fseek(File, 0, SEEK_END);
+    Result.BytecodeLength = ftell(File);
+    fseek(File, 0, SEEK_SET);
+
+    void* FileData = malloc(Result.BytecodeLength);
+    fread(FileData, Result.BytecodeLength, 1, File);
+    Result.pShaderBytecode = FileData;
+
+    fclose(File);
+
+    return Result;
+}
+
 dx12_rasterizer Dx12RasterizerCreate(HWND WindowHandle, u32 Width, u32 Height)
 {
     dx12_rasterizer Result = {};
+    Result.RenderWidth = Width;
+    Result.RenderHeight = Height;
 
     IDXGIFactory2* Factory = 0;
     ThrowIfFailed(CreateDXGIFactory2(0, IID_PPV_ARGS(&Factory)));
-
+ 
     ID3D12Debug1* Debug;
     ThrowIfFailed(D3D12GetDebugInterface(IID_PPV_ARGS(&Debug)));
     Debug->EnableDebugLayer();
@@ -400,6 +480,7 @@ dx12_rasterizer Dx12RasterizerCreate(HWND WindowHandle, u32 Width, u32 Height)
 
     Result.RtvHeap = Dx12DescriptorHeapCreate(&Result, D3D12_DESCRIPTOR_HEAP_TYPE_RTV, 2);
     Result.DsvHeap = Dx12DescriptorHeapCreate(&Result, D3D12_DESCRIPTOR_HEAP_TYPE_DSV, 1);
+    Result.ShaderDescHeap = Dx12DescriptorHeapCreate(&Result, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, 50, D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE);
     
     {
         D3D12_RESOURCE_DESC Desc = {};
@@ -420,15 +501,167 @@ dx12_rasterizer Dx12RasterizerCreate(HWND WindowHandle, u32 Width, u32 Height)
         Result.DepthBuffer = Dx12CreateResource(&Result, &Result.RtvArena, &Desc,
                                                 D3D12_RESOURCE_STATE_DEPTH_WRITE,
                                                 &ClearValue);
-        Result.DepthDescriptor = Dx12DescriptorAllocate(&Result.DsvHeap);
+        Dx12DescriptorAllocate(&Result.DsvHeap, &Result.DepthDescriptor, 0);
         Device->CreateDepthStencilView(Result.DepthBuffer, 0, Result.DepthDescriptor);
     }
     
     {
-        Result.FrameBufferDescriptors[0] = Dx12DescriptorAllocate(&Result.RtvHeap);
+        Dx12DescriptorAllocate(&Result.RtvHeap, Result.FrameBufferDescriptors + 0, 0);
         Device->CreateRenderTargetView(Result.FrameBuffers[0], nullptr, Result.FrameBufferDescriptors[0]);
-        Result.FrameBufferDescriptors[1] = Dx12DescriptorAllocate(&Result.RtvHeap);
+        Dx12DescriptorAllocate(&Result.RtvHeap, Result.FrameBufferDescriptors + 1, 0);
         Device->CreateRenderTargetView(Result.FrameBuffers[1], nullptr, Result.FrameBufferDescriptors[1]);
+    }
+
+    // NOTE: Творимо графічний конвеєр
+    {
+        // NOTE: Творимо графічний підпис
+        {
+            D3D12_ROOT_PARAMETER RootParameters[2] = {};
+
+            // NOTE: Творимо першу таблицю дескрипторів
+            D3D12_DESCRIPTOR_RANGE Table1Range[1] = {};
+            {
+                Table1Range[0].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+                Table1Range[0].NumDescriptors = 1;
+                Table1Range[0].BaseShaderRegister = 0;
+                Table1Range[0].RegisterSpace = 0;
+                Table1Range[0].OffsetInDescriptorsFromTableStart = 0;
+
+                RootParameters[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+                RootParameters[0].DescriptorTable.NumDescriptorRanges = ArrayCount(Table1Range);
+                RootParameters[0].DescriptorTable.pDescriptorRanges = Table1Range;
+                RootParameters[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+            }
+
+            // NOTE: Творимо другу таблицю дескрипторів
+            D3D12_DESCRIPTOR_RANGE Table2Range[1] = {};
+            {
+                Table2Range[0].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_CBV;
+                Table2Range[0].NumDescriptors = 1;
+                Table2Range[0].BaseShaderRegister = 0;
+                Table2Range[0].RegisterSpace = 0;
+                Table2Range[0].OffsetInDescriptorsFromTableStart = 0;
+
+                RootParameters[1].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+                RootParameters[1].DescriptorTable.NumDescriptorRanges = ArrayCount(Table2Range);
+                RootParameters[1].DescriptorTable.pDescriptorRanges = Table2Range;
+                RootParameters[1].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+            }
+
+            D3D12_STATIC_SAMPLER_DESC StaticSamplerDesc = {};
+            StaticSamplerDesc.Filter = D3D12_FILTER_MIN_MAG_LINEAR_MIP_POINT;
+            StaticSamplerDesc.AddressU = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+            StaticSamplerDesc.AddressV = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+            StaticSamplerDesc.AddressW = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+            StaticSamplerDesc.ComparisonFunc = D3D12_COMPARISON_FUNC_NEVER;
+            StaticSamplerDesc.ShaderRegister = 0;
+            StaticSamplerDesc.RegisterSpace = 0;
+            StaticSamplerDesc.ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+            
+            D3D12_ROOT_SIGNATURE_DESC SignatureDesc = {};
+            SignatureDesc.NumParameters = ArrayCount(RootParameters);
+            SignatureDesc.pParameters = RootParameters;
+            SignatureDesc.NumStaticSamplers = 1;
+            SignatureDesc.pStaticSamplers = &StaticSamplerDesc;
+            SignatureDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
+            
+            ID3DBlob* SerializedRootSig = 0;
+            ID3DBlob* ErrorBlob = 0;
+            ThrowIfFailed(D3D12SerializeRootSignature(&SignatureDesc,
+                                                      D3D_ROOT_SIGNATURE_VERSION_1_0,
+                                                      &SerializedRootSig,
+                                                      &ErrorBlob));
+            ThrowIfFailed(Device->CreateRootSignature(0,
+                                                      SerializedRootSig->GetBufferPointer(),
+                                                      SerializedRootSig->GetBufferSize(),
+                                                      IID_PPV_ARGS(&Result.ModelRootSignature)));
+
+            if (SerializedRootSig)
+            {
+                SerializedRootSig->Release();
+            }
+            if (ErrorBlob)
+            {
+                ErrorBlob->Release();
+            }
+        }
+
+        D3D12_GRAPHICS_PIPELINE_STATE_DESC Desc = {};
+        Desc.pRootSignature = Result.ModelRootSignature;
+        
+        Desc.VS = Dx12LoadShader("ModelVsMain.shader");
+        Desc.PS = Dx12LoadShader("ModelPsMain.shader");
+
+        Desc.BlendState.RenderTarget[0].BlendEnable = true;
+        Desc.BlendState.RenderTarget[0].LogicOpEnable = false;
+        Desc.BlendState.RenderTarget[0].SrcBlend = D3D12_BLEND_ONE;
+        Desc.BlendState.RenderTarget[0].DestBlend = D3D12_BLEND_ZERO;
+        Desc.BlendState.RenderTarget[0].BlendOp = D3D12_BLEND_OP_ADD;
+        Desc.BlendState.RenderTarget[0].SrcBlendAlpha = D3D12_BLEND_ONE;
+        Desc.BlendState.RenderTarget[0].DestBlendAlpha = D3D12_BLEND_ZERO;
+        Desc.BlendState.RenderTarget[0].BlendOpAlpha = D3D12_BLEND_OP_ADD;
+        Desc.BlendState.RenderTarget[0].RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
+        Desc.SampleMask = 0xFFFFFFFF;
+
+        Desc.RasterizerState.FillMode = D3D12_FILL_MODE_SOLID;
+        Desc.RasterizerState.CullMode = D3D12_CULL_MODE_BACK;
+        Desc.RasterizerState.FrontCounterClockwise = FALSE;
+        Desc.RasterizerState.DepthClipEnable = TRUE;
+
+        Desc.DepthStencilState.DepthEnable = TRUE;
+        Desc.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ALL;
+        Desc.DepthStencilState.DepthFunc = D3D12_COMPARISON_FUNC_LESS;
+        
+        D3D12_INPUT_ELEMENT_DESC InputElementDescs[2] = {};
+        InputElementDescs[0].SemanticName = "POSITION";
+        InputElementDescs[0].SemanticIndex = 0;
+        InputElementDescs[0].Format = DXGI_FORMAT_R32G32B32_FLOAT;
+        InputElementDescs[0].InputSlot = 0;
+        InputElementDescs[0].AlignedByteOffset = D3D12_APPEND_ALIGNED_ELEMENT;
+        InputElementDescs[0].InputSlotClass = D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA;
+
+        InputElementDescs[1].SemanticName = "TEXCOORD";
+        InputElementDescs[1].SemanticIndex = 0;
+        InputElementDescs[1].Format = DXGI_FORMAT_R32G32_FLOAT;
+        InputElementDescs[1].InputSlot = 0;
+        InputElementDescs[1].AlignedByteOffset = D3D12_APPEND_ALIGNED_ELEMENT;
+        InputElementDescs[1].InputSlotClass = D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA;
+        
+        Desc.InputLayout.pInputElementDescs = InputElementDescs;
+        Desc.InputLayout.NumElements = ArrayCount(InputElementDescs);
+
+        Desc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+        Desc.NumRenderTargets = 1;
+        Desc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
+        Desc.DSVFormat = DXGI_FORMAT_D32_FLOAT;
+        Desc.SampleDesc.Count = 1;
+        
+        ThrowIfFailed(Device->CreateGraphicsPipelineState(&Desc, IID_PPV_ARGS(&Result.ModelPipeline)));
+    }
+
+    {
+        D3D12_RESOURCE_DESC Desc = {};
+        Desc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+        Desc.Width = Align(sizeof(m4), 256);
+        Desc.Height = 1;
+        Desc.DepthOrArraySize = 1;
+        Desc.MipLevels = 1;
+        Desc.Format = DXGI_FORMAT_UNKNOWN;
+        Desc.SampleDesc.Count = 1;
+        Desc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+        Result.TransformBuffer = Dx12CreateResource(&Result,
+                                                    &Result.BufferArena,
+                                                    &Desc,
+                                                    D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER,
+                                                    0);
+
+        D3D12_CONSTANT_BUFFER_VIEW_DESC CbvDesc = {};
+        CbvDesc.BufferLocation = Result.TransformBuffer->GetGPUVirtualAddress();
+        CbvDesc.SizeInBytes = Desc.Width;
+
+        D3D12_CPU_DESCRIPTOR_HANDLE CpuDescriptor = {};
+        Dx12DescriptorAllocate(&Result.ShaderDescHeap, &CpuDescriptor, &Result.TransformDescriptor);
+        Device->CreateConstantBufferView(&CbvDesc, CpuDescriptor);
     }
     
     return Result;

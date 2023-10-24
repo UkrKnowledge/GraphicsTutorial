@@ -80,7 +80,7 @@ int APIENTRY WinMain(HINSTANCE hInstance,
 
     GlobalState.RasterizerType = RasterizerType_Dx12;
     GlobalState.SwRasterizer = SwRasterizerCreate(GlobalState.WindowHandle, 600, 600);
-    GlobalState.Dx12Rasterizer = Dx12RasterizerCreate(GlobalState.WindowHandle, 600, 600);
+    GlobalState.Dx12Rasterizer = Dx12RasterizerCreate(GlobalState.WindowHandle, 1920, 1080);
     
     {
         local_global vertex ModelVertices[] =
@@ -418,6 +418,13 @@ int APIENTRY WinMain(HINSTANCE hInstance,
                 dx12_rasterizer* Rasterizer = &GlobalState.Dx12Rasterizer;
                 ID3D12GraphicsCommandList* CommandList = Rasterizer->CommandList;
 
+                Dx12CopyDataToBuffer(Rasterizer,
+                                     D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER,
+                                     D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER,
+                                     &Transform,
+                                     sizeof(m4),
+                                     Rasterizer->TransformBuffer);
+                
                 {
                     D3D12_RESOURCE_BARRIER Barrier = {};
                     Barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
@@ -432,6 +439,59 @@ int APIENTRY WinMain(HINSTANCE hInstance,
                 CommandList->ClearRenderTargetView(Rasterizer->FrameBufferDescriptors[Rasterizer->CurrentFrameIndex], Color, 0, nullptr);
                 CommandList->ClearDepthStencilView(Rasterizer->DepthDescriptor, D3D12_CLEAR_FLAG_DEPTH, 1, 0, 0, 0);
 
+                CommandList->OMSetRenderTargets(1, Rasterizer->FrameBufferDescriptors + Rasterizer->CurrentFrameIndex, 0,
+                                                &Rasterizer->DepthDescriptor);
+
+                D3D12_VIEWPORT Viewport = {};
+                Viewport.TopLeftX = 0;
+                Viewport.TopLeftY = 0;
+                Viewport.Width = Rasterizer->RenderWidth;
+                Viewport.Height = Rasterizer->RenderHeight;
+                Viewport.MinDepth = 0;
+                Viewport.MaxDepth = 1;
+                CommandList->RSSetViewports(1, &Viewport);
+
+                D3D12_RECT ScissorRect = {};
+                ScissorRect.left = 0;
+                ScissorRect.right = Rasterizer->RenderWidth;
+                ScissorRect.top = 0;
+                ScissorRect.bottom = Rasterizer->RenderHeight;
+                CommandList->RSSetScissorRects(1, &ScissorRect);
+
+                model* CurrModel = &GlobalState.SponzaModel;
+                {
+                    D3D12_INDEX_BUFFER_VIEW View = {};
+                    View.BufferLocation = CurrModel->GpuIndexBuffer->GetGPUVirtualAddress();
+                    View.SizeInBytes = sizeof(u32) * CurrModel->IndexCount;
+                    View.Format = DXGI_FORMAT_R32_UINT;
+                    CommandList->IASetIndexBuffer(&View);
+                }
+
+                {
+                    D3D12_VERTEX_BUFFER_VIEW Views[1] = {};
+                    Views[0].BufferLocation = CurrModel->GpuVertexBuffer->GetGPUVirtualAddress();
+                    Views[0].SizeInBytes = sizeof(vertex) * CurrModel->VertexCount;
+                    Views[0].StrideInBytes = sizeof(vertex);
+                    CommandList->IASetVertexBuffers(0, 1, Views);
+                }
+
+                CommandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+
+                CommandList->SetGraphicsRootSignature(Rasterizer->ModelRootSignature);
+                CommandList->SetPipelineState(Rasterizer->ModelPipeline);
+
+                CommandList->SetDescriptorHeaps(1, &Rasterizer->ShaderDescHeap.Heap);
+                CommandList->SetGraphicsRootDescriptorTable(1, Rasterizer->TransformDescriptor);
+
+                for (u32 MeshId = 0; MeshId < CurrModel->NumMeshes; ++MeshId)
+                {
+                    mesh* CurrMesh = CurrModel->MeshArray + MeshId;
+                    texture* CurrTexture = CurrModel->TextureArray + CurrMesh->TextureId;
+                        
+                    CommandList->SetGraphicsRootDescriptorTable(0, CurrTexture->GpuDescriptor);
+                    CommandList->DrawIndexedInstanced(CurrMesh->IndexCount, 1, CurrMesh->IndexOffset, CurrMesh->VertexOffset, 0);
+                }
+                
                 {
                     D3D12_RESOURCE_BARRIER Barrier = {};
                     Barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
@@ -460,6 +520,7 @@ int APIENTRY WinMain(HINSTANCE hInstance,
                 ThrowIfFailed(CommandList->Reset(Rasterizer->CommandAllocator, 0));
 
                 Rasterizer->CurrentFrameIndex = (Rasterizer->CurrentFrameIndex + 1) % 2;
+                Dx12ClearUploadArena(&Rasterizer->UploadArena);
             } break;
         }
     }

@@ -36,7 +36,9 @@ struct dx12_rasterizer
     dx12_arena RtvArena;
     dx12_arena BufferArena;
     dx12_arena TextureArena;
-    
+
+    u32 RenderWidth;
+    u32 RenderHeight;
     IDXGISwapChain1* SwapChain;
     u32 CurrentFrameIndex;
     ID3D12Resource* FrameBuffers[2];
@@ -53,6 +55,14 @@ struct dx12_rasterizer
 
     dx12_descriptor_heap RtvHeap;
     dx12_descriptor_heap DsvHeap;
+    dx12_descriptor_heap ShaderDescHeap;
+
+    ID3D12Resource* TransformBuffer;
+    D3D12_GPU_DESCRIPTOR_HANDLE TransformDescriptor;
+    
+    // NOTE: Графічний конвеєр
+    ID3D12RootSignature* ModelRootSignature;
+    ID3D12PipelineState* ModelPipeline;
 };
 
 #define DX12_RASTERIZER_H

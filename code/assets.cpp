@@ -89,6 +89,18 @@ model AssetLoadModel(dx12_rasterizer* Dx12Rasterizer, char* FolderPath, char* Fi
                                                                  &Desc,
                                                                  D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
                                                                  (u8*)CurrTexture->Texels);
+
+                D3D12_SHADER_RESOURCE_VIEW_DESC SrvDesc = {};
+                SrvDesc.Format = Desc.Format;
+                SrvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+                SrvDesc.Shader4ComponentMapping = D3D12_ENCODE_SHADER_4_COMPONENT_MAPPING(0, 1, 2, 3);
+                SrvDesc.Texture2D.MostDetailedMip = 0;
+                SrvDesc.Texture2D.MipLevels = 1;
+                SrvDesc.Texture2D.PlaneSlice = 0;
+
+                D3D12_CPU_DESCRIPTOR_HANDLE CpuDescriptor = {};
+                Dx12DescriptorAllocate(&Dx12Rasterizer->ShaderDescHeap, &CpuDescriptor, &CurrTexture->GpuDescriptor);
+                Dx12Rasterizer->Device->CreateShaderResourceView(CurrTexture->GpuTexture, &SrvDesc, CpuDescriptor);
             }
             
             stbi_image_free(UnFlippedTexels);
