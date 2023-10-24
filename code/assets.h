@@ -13,11 +13,13 @@
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
 
+#pragma pack(push, 1)
 struct vertex
 {
     v3 Pos;
     v2 Uv;
 };
+#pragma pack(pop)
 
 struct texture
 {
