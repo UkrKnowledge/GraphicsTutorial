@@ -81,7 +81,7 @@ model AssetLoadModel(dx12_rasterizer* Dx12Rasterizer, char* FolderPath, char* Fi
                 Desc.Width = CurrTexture->Width;
                 Desc.Height = CurrTexture->Height;
                 Desc.DepthOrArraySize = 1;
-                Desc.MipLevels = 1;
+                Desc.MipLevels = u32(ceil(log2(max(Desc.Width, Desc.Height))) + 1);
                 Desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
                 Desc.SampleDesc.Count = 1;
                 Desc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
@@ -95,7 +95,7 @@ model AssetLoadModel(dx12_rasterizer* Dx12Rasterizer, char* FolderPath, char* Fi
                 SrvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
                 SrvDesc.Shader4ComponentMapping = D3D12_ENCODE_SHADER_4_COMPONENT_MAPPING(0, 1, 2, 3);
                 SrvDesc.Texture2D.MostDetailedMip = 0;
-                SrvDesc.Texture2D.MipLevels = 1;
+                SrvDesc.Texture2D.MipLevels = Desc.MipLevels;
                 SrvDesc.Texture2D.PlaneSlice = 0;
 
                 D3D12_CPU_DESCRIPTOR_HANDLE CpuDescriptor = {};

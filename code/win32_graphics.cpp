@@ -45,7 +45,7 @@ int APIENTRY WinMain(HINSTANCE hInstance,
     GlobalState.IsRunning = true;
     LARGE_INTEGER TimerFrequency = {};
     Assert(QueryPerformanceFrequency(&TimerFrequency));
-
+    
     {
         WNDCLASSA WindowClass = {};
         WindowClass.style = CS_HREDRAW | CS_VREDRAW | CS_OWNDC;

@@ -312,35 +312,94 @@ ID3D12Resource* Dx12CreateTextureAsset(dx12_rasterizer* Rasterizer,
                                        D3D12_RESOURCE_STATES InitialState,
                                        void* Texels)
 {
+#define MAX_MIP_LEVELS 32
     ID3D12Resource* Result = 0;
 
     ID3D12Device* Device = Rasterizer->Device;
     ID3D12GraphicsCommandList* CommandList = Rasterizer->CommandList;
 
+    // NOTE: Ініцюємо дані для завантаження мип-рівенів
     D3D12_RESOURCE_ALLOCATION_INFO AllocationInfo = Device->GetResourceAllocationInfo(0, 1, Desc);
+    u64 UploadSize = 0;
+    D3D12_PLACED_SUBRESOURCE_FOOTPRINT MipFootPrints[MAX_MIP_LEVELS] = {};
+    Device->GetCopyableFootprints(Desc, 0, Desc->MipLevels, 0, MipFootPrints, 0, 0, &UploadSize);
+
+    u64 UploadOffset = 0;
+    u8* UploadTexels = Dx12UploadArenaPushSize(&Rasterizer->UploadArena, UploadSize, &UploadOffset);
+    
     u64 BytesPerPixel = Dx12GetBytesPerPixel(Desc->Format);
-    D3D12_PLACED_SUBRESOURCE_FOOTPRINT PlacedFootPrint = {};
+
+    // NOTE: Виділюємо пам'ять зі malloc, з якої швидше можна завантажувати дані
+    texel_rgba8* MipMemory = Desc->MipLevels > 1 ? (texel_rgba8*)malloc(UploadSize) : 0;
+    
+    // NOTE: Копюємо мип-рівень 0 до Upload Arena
     {
-        Assert(Desc->DepthOrArraySize == 1);
-        D3D12_SUBRESOURCE_FOOTPRINT FootPrint = {};
-        FootPrint.Format = Desc->Format;
-        FootPrint.Width = Desc->Width;
-        FootPrint.Height = Desc->Height;
-        FootPrint.Depth = 1;
-        FootPrint.RowPitch = Align(FootPrint.Width * BytesPerPixel, D3D12_TEXTURE_DATA_PITCH_ALIGNMENT);
-        PlacedFootPrint.Footprint = FootPrint;
-
-        u8* DestTexels = Dx12UploadArenaPushSize(&Rasterizer->UploadArena,
-                                                 FootPrint.Height * FootPrint.RowPitch,
-                                                 &PlacedFootPrint.Offset);
-
-        // NOTE: Копюємо текстуру до Upload Arena
+        D3D12_PLACED_SUBRESOURCE_FOOTPRINT* CurrFootPrint = MipFootPrints + 0;
+        
+        CurrFootPrint->Offset += UploadOffset;
         for (u32 Y = 0; Y < Desc->Height; ++Y)
         {
-            u8* Src = (u8*)Texels + (Y * Desc->Width) * BytesPerPixel;
-            u8* Dest = DestTexels + (Y * FootPrint.RowPitch);
-            memcpy(Dest, Src, BytesPerPixel * Desc->Width);
+            u8* Src = (u8*)Texels + (Y * CurrFootPrint->Footprint.Width) * BytesPerPixel;
+            u8* Dest = UploadTexels + (Y * CurrFootPrint->Footprint.RowPitch);
+            memcpy(Dest, Src, BytesPerPixel * CurrFootPrint->Footprint.Width);
         }
+    }
+
+    // NOTE: Якщо текстура зберігає більше мипс, обчислюємо їх та копіюємо
+    {
+        texel_rgba8* SrcMipStart = MipMemory - MipFootPrints[0].Footprint.Width * MipFootPrints[0].Footprint.Height;
+        texel_rgba8* DstMipStart = MipMemory;
+        for (u32 MipId = 1; MipId < Desc->MipLevels; ++MipId)
+        {
+            Assert(Desc->Format == DXGI_FORMAT_R8G8B8A8_UNORM);
+            D3D12_PLACED_SUBRESOURCE_FOOTPRINT* PrevFootPrint = MipFootPrints + MipId - 1;
+            D3D12_PLACED_SUBRESOURCE_FOOTPRINT* CurrFootPrint = MipFootPrints + MipId;
+                
+            // NOTE: Обчислюємо мип-рівень
+            texel_rgba8* SrcTexelBase = MipId == 1 ? (texel_rgba8*)Texels : SrcMipStart;
+            for (u32 Y = 0; Y < CurrFootPrint->Footprint.Height; ++Y)
+            {
+                for (u32 X = 0; X < CurrFootPrint->Footprint.Width; ++X)
+                {
+                    texel_rgba8* DstTexel = DstMipStart + Y * CurrFootPrint->Footprint.Width + X;
+                    
+                    texel_rgba8* SrcTexel00 = SrcTexelBase + (2*Y + 0) * PrevFootPrint->Footprint.Width + 2*X + 0;
+                    texel_rgba8* SrcTexel01 = SrcTexelBase + (2*Y + 0) * PrevFootPrint->Footprint.Width + 2*X + 1;
+                    texel_rgba8* SrcTexel10 = SrcTexelBase + (2*Y + 1) * PrevFootPrint->Footprint.Width + 2*X + 0;
+                    texel_rgba8* SrcTexel11 = SrcTexelBase + (2*Y + 1) * PrevFootPrint->Footprint.Width + 2*X + 1;
+
+                    // NOTE: Обчислюємо середний колір
+                    DstTexel->Red = u8(round(f32(SrcTexel00->Red + SrcTexel01->Red + SrcTexel10->Red + SrcTexel11->Red) / 4.0f));
+                    DstTexel->Green = u8(round(f32(SrcTexel00->Green + SrcTexel01->Green + SrcTexel10->Green + SrcTexel11->Green) / 4.0f));
+                    DstTexel->Blue = u8(round(f32(SrcTexel00->Blue + SrcTexel01->Blue + SrcTexel10->Blue + SrcTexel11->Blue) / 4.0f));
+                    DstTexel->Alpha = u8(round(f32(SrcTexel00->Alpha + SrcTexel01->Alpha + SrcTexel10->Alpha + SrcTexel11->Alpha) / 4.0f));
+                }
+            }
+
+            // NOTE: Копіюємо mip-рівень до арени завантаження
+            {
+                texel_rgba8* SrcRowY = DstMipStart;
+                u8* DstRowY = UploadTexels + CurrFootPrint->Offset;
+                CurrFootPrint->Offset += UploadOffset;
+                
+                for (u32 Y = 0; Y < CurrFootPrint->Footprint.Height; ++Y)
+                {
+                    memcpy(DstRowY, SrcRowY, BytesPerPixel * CurrFootPrint->Footprint.Width);
+                    
+                    DstRowY += CurrFootPrint->Footprint.RowPitch;
+                    SrcRowY += CurrFootPrint->Footprint.Width;
+                }
+            }
+
+            // NOTE: Міняємо вказівники для обчислювання наступного mip-рівня
+            SrcMipStart += PrevFootPrint->Footprint.Width * PrevFootPrint->Footprint.Height;
+            DstMipStart += CurrFootPrint->Footprint.Width * CurrFootPrint->Footprint.Height;
+        }
+    }
+    
+    if (MipMemory)
+    {
+        free(MipMemory);
     }
 
     // NOTE: Творимо текстуру
@@ -348,16 +407,17 @@ ID3D12Resource* Dx12CreateTextureAsset(dx12_rasterizer* Rasterizer,
                                 Desc, D3D12_RESOURCE_STATE_COPY_DEST, 0);
 
     // NOTE: Копюємо текстуру
+    for (u32 MipId = 0; MipId < Desc->MipLevels; ++MipId)
     {
         D3D12_TEXTURE_COPY_LOCATION SrcRegion = {};
         SrcRegion.pResource = Rasterizer->UploadArena.GpuBuffer;
         SrcRegion.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
-        SrcRegion.PlacedFootprint = PlacedFootPrint;
+        SrcRegion.PlacedFootprint = MipFootPrints[MipId];
 
         D3D12_TEXTURE_COPY_LOCATION DstRegion = {};
         DstRegion.pResource = Result;
         DstRegion.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
-        DstRegion.SubresourceIndex = 0;
+        DstRegion.SubresourceIndex = MipId;
 
         CommandList->CopyTextureRegion(&DstRegion, 0, 0, 0, &SrcRegion, nullptr);
     }
@@ -549,11 +609,14 @@ dx12_rasterizer Dx12RasterizerCreate(HWND WindowHandle, u32 Width, u32 Height)
             }
 
             D3D12_STATIC_SAMPLER_DESC StaticSamplerDesc = {};
-            StaticSamplerDesc.Filter = D3D12_FILTER_MIN_MAG_LINEAR_MIP_POINT;
+            StaticSamplerDesc.Filter = D3D12_FILTER_ANISOTROPIC;
             StaticSamplerDesc.AddressU = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
             StaticSamplerDesc.AddressV = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
             StaticSamplerDesc.AddressW = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
             StaticSamplerDesc.ComparisonFunc = D3D12_COMPARISON_FUNC_NEVER;
+            StaticSamplerDesc.MaxAnisotropy = 16.0f;
+            StaticSamplerDesc.MinLOD = 0;
+            StaticSamplerDesc.MaxLOD = D3D12_FLOAT32_MAX;
             StaticSamplerDesc.ShaderRegister = 0;
             StaticSamplerDesc.RegisterSpace = 0;
             StaticSamplerDesc.ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;

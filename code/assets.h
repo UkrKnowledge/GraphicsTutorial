@@ -19,6 +19,14 @@ struct vertex
     v3 Pos;
     v2 Uv;
 };
+
+struct texel_rgba8
+{
+    u8 Red;
+    u8 Green;
+    u8 Blue;
+    u8 Alpha;
+};
 #pragma pack(pop)
 
 struct texture

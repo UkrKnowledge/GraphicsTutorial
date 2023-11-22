@@ -343,6 +343,14 @@ v2 V2(f32 X, f32 Y)
     return Result;
 }
 
+v2 V2(v2i A)
+{
+    v2 Result = {};
+    Result.x = A.x;
+    Result.y = A.y;
+    return Result;
+}
+
 v2 operator+(v2 A, v2 B)
 {
     v2 Result = {};
@@ -394,6 +402,14 @@ v2 operator/(v2 A, f32 B)
     v2 Result = {};
     Result.x = A.x / B;
     Result.y = A.y / B;
+    return Result;
+}
+
+v2 operator/(v2 A, v2 B)
+{
+    v2 Result = {};
+    Result.x = A.x / B.x;
+    Result.y = A.y / B.y;
     return Result;
 }
 
@@ -520,6 +536,14 @@ v2i operator-(v2i A, v2i B)
     v2i Result = {};
     Result.x = A.x - B.x;
     Result.y = A.y - B.y;
+    return Result;
+}
+
+v2i operator*(v2i A, v2i B)
+{
+    v2i Result = {};
+    Result.x = A.x * B.x;
+    Result.y = A.y * B.y;
     return Result;
 }
 
