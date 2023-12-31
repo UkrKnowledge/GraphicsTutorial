@@ -145,6 +145,10 @@ model AssetLoadModel(dx12_rasterizer* Dx12Rasterizer, char* FolderPath, char* Fi
 
             MinDistAxis = min(MinDistAxis, min(CurrVertex->Pos.x, min(CurrVertex->Pos.y, CurrVertex->Pos.z)));
             MaxDistAxis = max(MaxDistAxis, max(CurrVertex->Pos.x, max(CurrVertex->Pos.y, CurrVertex->Pos.z)));
+
+            CurrVertex->Normal = V3(SrcMesh->mNormals[VertexId].x,
+                                    SrcMesh->mNormals[VertexId].y,
+                                    SrcMesh->mNormals[VertexId].z);
             
             if (SrcMesh->mTextureCoords[0])
             {

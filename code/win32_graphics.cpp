@@ -358,11 +358,12 @@ int APIENTRY WinMain(HINSTANCE hInstance,
         }
                         
         f32 Offset = abs(sin(GlobalState.CurrTime));
-        m4 Transform = (PerspectiveMatrix(60.0f, AspectRatio, 0.01f, 1000.0f) *
-                        CameraTransform *
-                        TranslationMatrix(0, 0, 1) *
-                        RotationMatrix(0, Pi32 * 0.5f, 0) *
-                        ScaleMatrix(1, 1, 1));
+        m4 WTransform = (TranslationMatrix(0, 0, 1) *
+                         RotationMatrix(0, Pi32 * 0.5f, 0) *
+                         ScaleMatrix(1, 1, 1));
+        m4 WVPTransform = (PerspectiveMatrix(60.0f, AspectRatio, 0.01f, 1000.0f) *
+                           CameraTransform *
+                           WTransform);
 
         switch (GlobalState.RasterizerType)
         {
@@ -388,7 +389,7 @@ int APIENTRY WinMain(HINSTANCE hInstance,
                     }
                 }
 
-                DrawModel(Rasterizer, &GlobalState.SponzaModel, Transform, Sampler);
+                DrawModel(Rasterizer, &GlobalState.SponzaModel, WVPTransform, Sampler);
         
                 BITMAPINFO BitmapInfo = {};
                 BitmapInfo.bmiHeader.biSize = sizeof(tagBITMAPINFOHEADER);
@@ -418,12 +419,37 @@ int APIENTRY WinMain(HINSTANCE hInstance,
                 dx12_rasterizer* Rasterizer = &GlobalState.Dx12Rasterizer;
                 ID3D12GraphicsCommandList* CommandList = Rasterizer->CommandList;
 
+                transform_buffer_cpu TransformBufferCopy = {};
+                TransformBufferCopy.WTransform = WTransform;
+                TransformBufferCopy.WVPTransform = WVPTransform;
+                TransformBufferCopy.NormalWTransform = Transpose(Inverse(WTransform));
+                TransformBufferCopy.Shininess = 4.0f;
+                TransformBufferCopy.SpecularStrength = 1.0f;
                 Dx12CopyDataToBuffer(Rasterizer,
                                      D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER,
                                      D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER,
-                                     &Transform,
-                                     sizeof(m4),
+                                     &TransformBufferCopy,
+                                     sizeof(TransformBufferCopy),
                                      Rasterizer->TransformBuffer);
+                
+                local_global f32 Time = 0.0f;
+                Time += FrameTime;
+                if (Time > 2.0f * Pi32)
+                {
+                    Time -= 2.0f * Pi32;
+                }
+
+                light_buffer_cpu LightBufferCopy = {};
+                LightBufferCopy.LightAmbientIntensity = 0.4f;
+                LightBufferCopy.LightColor = V3(1.0f, 0.9f, 0.1f);
+                LightBufferCopy.LightDirection = Normalize(V3(cos(Time), -1.0f, 0.0f));
+                LightBufferCopy.CameraPos = GlobalState.Camera.Pos;
+                Dx12CopyDataToBuffer(Rasterizer,
+                                     D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER,
+                                     D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER,
+                                     &LightBufferCopy,
+                                     sizeof(LightBufferCopy),
+                                     Rasterizer->LightBuffer);
                 
                 {
                     D3D12_RESOURCE_BARRIER Barrier = {};

@@ -18,6 +18,7 @@ struct vertex
 {
     v3 Pos;
     v2 Uv;
+    v3 Normal;
 };
 
 struct texel_rgba8

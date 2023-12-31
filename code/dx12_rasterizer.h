@@ -3,6 +3,24 @@
 #include <d3d12.h>
 #include <dxgi1_3.h>
 
+struct light_buffer_cpu
+{
+    v3 LightColor;
+    f32 LightAmbientIntensity;
+    v3 LightDirection;
+    u32 Pad0;
+    v3 CameraPos;
+};
+
+struct transform_buffer_cpu
+{
+    m4 WVPTransform;
+    m4 WTransform;
+    m4 NormalWTransform;
+    f32 Shininess;
+    f32 SpecularStrength;
+};
+
 struct dx12_arena
 {
     u64 Size;
@@ -59,6 +77,8 @@ struct dx12_rasterizer
 
     ID3D12Resource* TransformBuffer;
     D3D12_GPU_DESCRIPTOR_HANDLE TransformDescriptor;
+
+    ID3D12Resource* LightBuffer;
     
     // NOTE: Графічний конвеєр
     ID3D12RootSignature* ModelRootSignature;

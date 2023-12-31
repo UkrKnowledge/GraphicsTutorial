@@ -597,7 +597,7 @@ dx12_rasterizer Dx12RasterizerCreate(HWND WindowHandle, u32 Width, u32 Height)
             D3D12_DESCRIPTOR_RANGE Table2Range[1] = {};
             {
                 Table2Range[0].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_CBV;
-                Table2Range[0].NumDescriptors = 1;
+                Table2Range[0].NumDescriptors = 2;
                 Table2Range[0].BaseShaderRegister = 0;
                 Table2Range[0].RegisterSpace = 0;
                 Table2Range[0].OffsetInDescriptorsFromTableStart = 0;
@@ -675,7 +675,7 @@ dx12_rasterizer Dx12RasterizerCreate(HWND WindowHandle, u32 Width, u32 Height)
         Desc.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ALL;
         Desc.DepthStencilState.DepthFunc = D3D12_COMPARISON_FUNC_LESS;
         
-        D3D12_INPUT_ELEMENT_DESC InputElementDescs[2] = {};
+        D3D12_INPUT_ELEMENT_DESC InputElementDescs[3] = {};
         InputElementDescs[0].SemanticName = "POSITION";
         InputElementDescs[0].SemanticIndex = 0;
         InputElementDescs[0].Format = DXGI_FORMAT_R32G32B32_FLOAT;
@@ -689,6 +689,13 @@ dx12_rasterizer Dx12RasterizerCreate(HWND WindowHandle, u32 Width, u32 Height)
         InputElementDescs[1].InputSlot = 0;
         InputElementDescs[1].AlignedByteOffset = D3D12_APPEND_ALIGNED_ELEMENT;
         InputElementDescs[1].InputSlotClass = D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA;
+
+        InputElementDescs[2].SemanticName = "NORMAL";
+        InputElementDescs[2].SemanticIndex = 0;
+        InputElementDescs[2].Format = DXGI_FORMAT_R32G32B32_FLOAT;
+        InputElementDescs[2].InputSlot = 0;
+        InputElementDescs[2].AlignedByteOffset = D3D12_APPEND_ALIGNED_ELEMENT;
+        InputElementDescs[2].InputSlotClass = D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA;
         
         Desc.InputLayout.pInputElementDescs = InputElementDescs;
         Desc.InputLayout.NumElements = ArrayCount(InputElementDescs);
@@ -702,10 +709,11 @@ dx12_rasterizer Dx12RasterizerCreate(HWND WindowHandle, u32 Width, u32 Height)
         ThrowIfFailed(Device->CreateGraphicsPipelineState(&Desc, IID_PPV_ARGS(&Result.ModelPipeline)));
     }
 
+    // NOTE: Творимо буфер перетворення
     {
         D3D12_RESOURCE_DESC Desc = {};
         Desc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
-        Desc.Width = Align(sizeof(m4), 256);
+        Desc.Width = Align(sizeof(transform_buffer_cpu), 256);
         Desc.Height = 1;
         Desc.DepthOrArraySize = 1;
         Desc.MipLevels = 1;
@@ -724,6 +732,32 @@ dx12_rasterizer Dx12RasterizerCreate(HWND WindowHandle, u32 Width, u32 Height)
 
         D3D12_CPU_DESCRIPTOR_HANDLE CpuDescriptor = {};
         Dx12DescriptorAllocate(&Result.ShaderDescHeap, &CpuDescriptor, &Result.TransformDescriptor);
+        Device->CreateConstantBufferView(&CbvDesc, CpuDescriptor);
+    }
+
+    // NOTE: Творимо буфер світла
+    {
+        D3D12_RESOURCE_DESC Desc = {};
+        Desc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+        Desc.Width = Align(sizeof(light_buffer_cpu), 256);
+        Desc.Height = 1;
+        Desc.DepthOrArraySize = 1;
+        Desc.MipLevels = 1;
+        Desc.Format = DXGI_FORMAT_UNKNOWN;
+        Desc.SampleDesc.Count = 1;
+        Desc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+        Result.LightBuffer = Dx12CreateResource(&Result,
+                                                &Result.BufferArena,
+                                                &Desc,
+                                                D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER,
+                                                0);
+
+        D3D12_CONSTANT_BUFFER_VIEW_DESC CbvDesc = {};
+        CbvDesc.BufferLocation = Result.LightBuffer->GetGPUVirtualAddress();
+        CbvDesc.SizeInBytes = Desc.Width;
+
+        D3D12_CPU_DESCRIPTOR_HANDLE CpuDescriptor = {};
+        Dx12DescriptorAllocate(&Result.ShaderDescHeap, &CpuDescriptor, 0);
         Device->CreateConstantBufferView(&CbvDesc, CpuDescriptor);
     }
     

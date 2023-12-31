@@ -69,31 +69,39 @@ union v2i_x4
     i32_x4 e[2];
 };
 
-union v3
+struct v3
 {
-    struct
+    union
     {
-        f32 x, y, z;
+        struct
+        {
+            f32 x, y, z;
+        };
+
+        struct
+        {
+            f32 r, g, b;
+        };
+
+        struct
+        {
+            v2 xy;
+            f32 Ignored0;
+        };
+
+        struct
+        {
+            f32 Ignored1;
+            v2 yz;
+        };
+
+        f32 e[3];
     };
 
-    struct
+    f32& operator[](i64 Index)
     {
-        f32 r, g, b;
-    };
-
-    struct
-    {
-        v2 xy;
-        f32 Ignored0;
-    };
-
-    struct
-    {
-        f32 Ignored1;
-        v2 yz;
-    };
-
-    f32 e[3];
+        return e[Index];
+    }
 };
 
 union v3_x4
@@ -119,41 +127,63 @@ union v3_x4
         f32_x4 Ignored1;
         v2_x4 yz;
     };
-
+    
     f32_x4 e[3];
 };
 
-union v4
+struct v4
 {
-    struct
+    union
     {
-        f32 x, y, z, w;
+        struct
+        {
+            f32 x, y, z, w;
+        };
+
+        struct
+        {
+            f32 r, g, b, a;
+        };
+
+        struct
+        {
+            v3 xyz;
+            f32 Ignored0;
+        };
+
+        struct
+        {
+            v2 xy;
+            v2 Ignored1;
+        };
+
+        struct
+        {
+            f32 Ignored3;
+            v3 yzw;
+        };
+        
+        f32 e[4];
     };
 
-    struct
+    f32& operator[](i64 Index)
     {
-        f32 r, g, b, a;
-    };
-
-    struct
-    {
-        v3 xyz;
-        f32 Ignored0;
-    };
-
-    struct
-    {
-        v2 xy;
-        v2 Ignored1;
-    };
-
-    f32 e[4];
+        return e[Index];
+    }
 };
 
-union m4
+struct m4
 {
-    v4 v[4];
-    f32 e[16];
+    union
+    {
+        v4 v[4];
+        f32 e[16];
+    };
+        
+    v4& operator[](i64 Index)
+    {
+        return v[Index];
+    }
 };
 
 #define GRAPHICS_MATH_H
