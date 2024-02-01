@@ -3,13 +3,20 @@
 #include <d3d12.h>
 #include <dxgi1_3.h>
 
-struct light_buffer_cpu
+struct dir_light_buffer_cpu
 {
     v3 LightColor;
     f32 LightAmbientIntensity;
     v3 LightDirection;
-    u32 Pad0;
+    u32 NumPointLights;
     v3 CameraPos;
+};
+
+struct point_light_cpu
+{
+    v3 Pos;
+    f32 DivisorConstant;
+    v3 Color;
 };
 
 struct transform_buffer_cpu
@@ -75,10 +82,16 @@ struct dx12_rasterizer
     dx12_descriptor_heap DsvHeap;
     dx12_descriptor_heap ShaderDescHeap;
 
-    ID3D12Resource* TransformBuffer;
-    D3D12_GPU_DESCRIPTOR_HANDLE TransformDescriptor;
+    ID3D12Resource* SponzaTransformBuffer;
+    D3D12_GPU_DESCRIPTOR_HANDLE SponzaTransformDescriptor;
 
-    ID3D12Resource* LightBuffer;
+    // NOTE: Дані пов'язані з світлом
+#define NUM_POINT_LIGHTS 2
+    ID3D12Resource* PlTransformBuffers[NUM_POINT_LIGHTS];
+    D3D12_GPU_DESCRIPTOR_HANDLE PlTransformDescriptors[NUM_POINT_LIGHTS];
+    ID3D12Resource* DirLightBuffer;
+    ID3D12Resource* PointLightBuffer;
+    D3D12_GPU_DESCRIPTOR_HANDLE LightDescriptor;
     
     // NOTE: Графічний конвеєр
     ID3D12RootSignature* ModelRootSignature;

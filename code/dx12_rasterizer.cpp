@@ -307,6 +307,50 @@ ID3D12Resource* Dx12CreateBufferAsset(dx12_rasterizer* Rasterizer,
     return Result;
 }
 
+ID3D12Resource* Dx12CreateBufferAsset(dx12_rasterizer* Rasterizer, u32 Size, D3D12_RESOURCE_STATES State, void* Data)
+{
+    ID3D12Resource* Result = 0;
+    D3D12_RESOURCE_DESC Desc = {};
+    Desc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+    Desc.Width = Size;
+    Desc.Height = 1;
+    Desc.DepthOrArraySize = 1;
+    Desc.MipLevels = 1;
+    Desc.Format = DXGI_FORMAT_UNKNOWN;
+    Desc.SampleDesc.Count = 1;
+    Desc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+    Result = Dx12CreateBufferAsset(Rasterizer, &Desc, State, Data);
+
+    return Result;
+}
+
+void Dx12CreateConstantBuffer(dx12_rasterizer* Rasterizer, u32 Size, ID3D12Resource** OutResource,
+                              D3D12_GPU_DESCRIPTOR_HANDLE* OutDescriptor)
+{
+    D3D12_RESOURCE_DESC Desc = {};
+    Desc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+    Desc.Width = Align(Size, 256);
+    Desc.Height = 1;
+    Desc.DepthOrArraySize = 1;
+    Desc.MipLevels = 1;
+    Desc.Format = DXGI_FORMAT_UNKNOWN;
+    Desc.SampleDesc.Count = 1;
+    Desc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+    *OutResource = Dx12CreateResource(Rasterizer,
+                                      &Rasterizer->BufferArena,
+                                      &Desc,
+                                      D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER,
+                                      0);
+
+    D3D12_CONSTANT_BUFFER_VIEW_DESC CbvDesc = {};
+    CbvDesc.BufferLocation = OutResource[0]->GetGPUVirtualAddress();
+    CbvDesc.SizeInBytes = Desc.Width;
+
+    D3D12_CPU_DESCRIPTOR_HANDLE CpuDescriptor = {};
+    Dx12DescriptorAllocate(&Rasterizer->ShaderDescHeap, &CpuDescriptor, OutDescriptor);
+    Rasterizer->Device->CreateConstantBufferView(&CbvDesc, CpuDescriptor);
+}
+
 ID3D12Resource* Dx12CreateTextureAsset(dx12_rasterizer* Rasterizer,
                                        D3D12_RESOURCE_DESC* Desc,
                                        D3D12_RESOURCE_STATES InitialState,
@@ -434,6 +478,91 @@ ID3D12Resource* Dx12CreateTextureAsset(dx12_rasterizer* Rasterizer,
     }
     
     return Result;
+}
+
+void Dx12CreateTexture(dx12_rasterizer* Rasterizer, u32 Width, u32 Height, u8* Texels,
+                       ID3D12Resource** OutResource, D3D12_GPU_DESCRIPTOR_HANDLE* OutDescriptor)
+{
+    D3D12_RESOURCE_DESC Desc = {};
+    Desc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+    Desc.Width = Width;
+    Desc.Height = Height;
+    Desc.DepthOrArraySize = 1;
+    Desc.MipLevels = u32(ceil(log2(max(Desc.Width, Desc.Height))) + 1);
+    Desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+    Desc.SampleDesc.Count = 1;
+    Desc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
+    *OutResource = Dx12CreateTextureAsset(Rasterizer,
+                                          &Desc,
+                                          D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
+                                          Texels);
+
+    D3D12_SHADER_RESOURCE_VIEW_DESC SrvDesc = {};
+    SrvDesc.Format = Desc.Format;
+    SrvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+    SrvDesc.Shader4ComponentMapping = D3D12_ENCODE_SHADER_4_COMPONENT_MAPPING(0, 1, 2, 3);
+    SrvDesc.Texture2D.MostDetailedMip = 0;
+    SrvDesc.Texture2D.MipLevels = Desc.MipLevels;
+    SrvDesc.Texture2D.PlaneSlice = 0;
+
+    D3D12_CPU_DESCRIPTOR_HANDLE CpuDescriptor = {};
+    Dx12DescriptorAllocate(&Rasterizer->ShaderDescHeap, &CpuDescriptor, OutDescriptor);
+    Rasterizer->Device->CreateShaderResourceView(*OutResource, &SrvDesc, CpuDescriptor);
+}
+
+//
+// NOTE: Допомочні функції для рендеру
+//
+
+void Dx12UploadTransformBuffer(dx12_rasterizer* Rasterizer,
+                               ID3D12Resource* Resource,
+                               m4 WTransform,
+                               m4 VPTransform,
+                               f32 Shininess,
+                               f32 SpecularStrength)
+{
+    transform_buffer_cpu TransformBufferCopy = {};
+    TransformBufferCopy.WTransform = WTransform;
+    TransformBufferCopy.WVPTransform = VPTransform * WTransform;
+    TransformBufferCopy.NormalWTransform = Transpose(Inverse(WTransform));
+    TransformBufferCopy.Shininess = Shininess;
+    TransformBufferCopy.SpecularStrength = SpecularStrength;
+    Dx12CopyDataToBuffer(Rasterizer,
+                         D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER,
+                         D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER,
+                         &TransformBufferCopy,
+                         sizeof(TransformBufferCopy),
+                         Resource);
+}
+
+void Dx12RenderModel(ID3D12GraphicsCommandList* CommandList, model* Model, D3D12_GPU_DESCRIPTOR_HANDLE TransformDescriptor)
+{
+    CommandList->SetGraphicsRootDescriptorTable(2, TransformDescriptor);
+
+    {
+        D3D12_INDEX_BUFFER_VIEW View = {};
+        View.BufferLocation = Model->GpuIndexBuffer->GetGPUVirtualAddress();
+        View.SizeInBytes = sizeof(u32) * Model->IndexCount;
+        View.Format = DXGI_FORMAT_R32_UINT;
+        CommandList->IASetIndexBuffer(&View);
+    }
+
+    {
+        D3D12_VERTEX_BUFFER_VIEW Views[1] = {};
+        Views[0].BufferLocation = Model->GpuVertexBuffer->GetGPUVirtualAddress();
+        Views[0].SizeInBytes = sizeof(vertex) * Model->VertexCount;
+        Views[0].StrideInBytes = sizeof(vertex);
+        CommandList->IASetVertexBuffers(0, 1, Views);
+    }
+
+    for (u32 MeshId = 0; MeshId < Model->NumMeshes; ++MeshId)
+    {
+        mesh* CurrMesh = Model->MeshArray + MeshId;
+        texture* CurrTexture = Model->TextureArray + CurrMesh->TextureId;
+                        
+        CommandList->SetGraphicsRootDescriptorTable(0, CurrTexture->GpuDescriptor);
+        CommandList->DrawIndexedInstanced(CurrMesh->IndexCount, 1, CurrMesh->IndexOffset, CurrMesh->VertexOffset, 0);
+    }
 }
 
 //
@@ -576,7 +705,7 @@ dx12_rasterizer Dx12RasterizerCreate(HWND WindowHandle, u32 Width, u32 Height)
     {
         // NOTE: Творимо графічний підпис
         {
-            D3D12_ROOT_PARAMETER RootParameters[2] = {};
+            D3D12_ROOT_PARAMETER RootParameters[3] = {};
 
             // NOTE: Творимо першу таблицю дескрипторів
             D3D12_DESCRIPTOR_RANGE Table1Range[1] = {};
@@ -593,14 +722,21 @@ dx12_rasterizer Dx12RasterizerCreate(HWND WindowHandle, u32 Width, u32 Height)
                 RootParameters[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
             }
 
-            // NOTE: Творимо другу таблицю дескрипторів
-            D3D12_DESCRIPTOR_RANGE Table2Range[1] = {};
+            // NOTE: Таблиця для буфери світла
+            D3D12_DESCRIPTOR_RANGE Table2Range[2] = {};
             {
                 Table2Range[0].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_CBV;
-                Table2Range[0].NumDescriptors = 2;
-                Table2Range[0].BaseShaderRegister = 0;
+                Table2Range[0].NumDescriptors = 1;
+                Table2Range[0].BaseShaderRegister = 1;
                 Table2Range[0].RegisterSpace = 0;
-                Table2Range[0].OffsetInDescriptorsFromTableStart = 0;
+                Table2Range[0].OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+
+                // NOTE: Для буфер point lights
+                Table2Range[1].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+                Table2Range[1].NumDescriptors = 1;
+                Table2Range[1].BaseShaderRegister = 1;
+                Table2Range[1].RegisterSpace = 0;
+                Table2Range[1].OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
 
                 RootParameters[1].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
                 RootParameters[1].DescriptorTable.NumDescriptorRanges = ArrayCount(Table2Range);
@@ -608,6 +744,21 @@ dx12_rasterizer Dx12RasterizerCreate(HWND WindowHandle, u32 Width, u32 Height)
                 RootParameters[1].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
             }
 
+            // NOTE: Таблиця для буфера перетворення
+            D3D12_DESCRIPTOR_RANGE Table3Range[1] = {};
+            {
+                Table3Range[0].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_CBV;
+                Table3Range[0].NumDescriptors = 1;
+                Table3Range[0].BaseShaderRegister = 0;
+                Table3Range[0].RegisterSpace = 0;
+                Table3Range[0].OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+
+                RootParameters[2].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+                RootParameters[2].DescriptorTable.NumDescriptorRanges = ArrayCount(Table3Range);
+                RootParameters[2].DescriptorTable.pDescriptorRanges = Table3Range;
+                RootParameters[2].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+            }
+            
             D3D12_STATIC_SAMPLER_DESC StaticSamplerDesc = {};
             StaticSamplerDesc.Filter = D3D12_FILTER_ANISOTROPIC;
             StaticSamplerDesc.AddressU = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
@@ -709,56 +860,51 @@ dx12_rasterizer Dx12RasterizerCreate(HWND WindowHandle, u32 Width, u32 Height)
         ThrowIfFailed(Device->CreateGraphicsPipelineState(&Desc, IID_PPV_ARGS(&Result.ModelPipeline)));
     }
 
-    // NOTE: Творимо буфер перетворення
+    // NOTE: Буфер перетворення для Sponza
+    Dx12CreateConstantBuffer(&Result, sizeof(transform_buffer_cpu),
+                             &Result.SponzaTransformBuffer,
+                             &Result.SponzaTransformDescriptor);
+    
+    // NOTE: Буфери перетворення для точкових світел
+    for (i32 PlIndex = 0; PlIndex < NUM_POINT_LIGHTS; ++PlIndex)
     {
-        D3D12_RESOURCE_DESC Desc = {};
-        Desc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
-        Desc.Width = Align(sizeof(transform_buffer_cpu), 256);
-        Desc.Height = 1;
-        Desc.DepthOrArraySize = 1;
-        Desc.MipLevels = 1;
-        Desc.Format = DXGI_FORMAT_UNKNOWN;
-        Desc.SampleDesc.Count = 1;
-        Desc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
-        Result.TransformBuffer = Dx12CreateResource(&Result,
-                                                    &Result.BufferArena,
-                                                    &Desc,
-                                                    D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER,
-                                                    0);
-
-        D3D12_CONSTANT_BUFFER_VIEW_DESC CbvDesc = {};
-        CbvDesc.BufferLocation = Result.TransformBuffer->GetGPUVirtualAddress();
-        CbvDesc.SizeInBytes = Desc.Width;
-
-        D3D12_CPU_DESCRIPTOR_HANDLE CpuDescriptor = {};
-        Dx12DescriptorAllocate(&Result.ShaderDescHeap, &CpuDescriptor, &Result.TransformDescriptor);
-        Device->CreateConstantBufferView(&CbvDesc, CpuDescriptor);
+        Dx12CreateConstantBuffer(&Result, sizeof(transform_buffer_cpu),
+                                 Result.PlTransformBuffers + PlIndex,
+                                 Result.PlTransformDescriptors + PlIndex);
     }
 
-    // NOTE: Творимо буфер світла
+    // NOTE: Буфер напрямленого світла
+    Dx12CreateConstantBuffer(&Result, sizeof(dir_light_buffer_cpu),
+                             &Result.DirLightBuffer, &Result.LightDescriptor);
+
+    // NOTE: Творимо буфер точкових світел
     {
         D3D12_RESOURCE_DESC Desc = {};
         Desc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
-        Desc.Width = Align(sizeof(light_buffer_cpu), 256);
+        Desc.Width = sizeof(point_light_cpu) * 100;
         Desc.Height = 1;
         Desc.DepthOrArraySize = 1;
         Desc.MipLevels = 1;
         Desc.Format = DXGI_FORMAT_UNKNOWN;
         Desc.SampleDesc.Count = 1;
         Desc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
-        Result.LightBuffer = Dx12CreateResource(&Result,
-                                                &Result.BufferArena,
-                                                &Desc,
-                                                D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER,
-                                                0);
-
-        D3D12_CONSTANT_BUFFER_VIEW_DESC CbvDesc = {};
-        CbvDesc.BufferLocation = Result.LightBuffer->GetGPUVirtualAddress();
-        CbvDesc.SizeInBytes = Desc.Width;
+        Result.PointLightBuffer = Dx12CreateResource(&Result,
+                                                     &Result.BufferArena,
+                                                     &Desc,
+                                                     D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
+                                                     0);
+        
+        D3D12_SHADER_RESOURCE_VIEW_DESC SrvDesc = {};
+        SrvDesc.Format = DXGI_FORMAT_UNKNOWN;
+        SrvDesc.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
+        SrvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+        SrvDesc.Buffer.FirstElement = 0;
+        SrvDesc.Buffer.NumElements = 100;
+        SrvDesc.Buffer.StructureByteStride = sizeof(point_light_cpu);
 
         D3D12_CPU_DESCRIPTOR_HANDLE CpuDescriptor = {};
         Dx12DescriptorAllocate(&Result.ShaderDescHeap, &CpuDescriptor, 0);
-        Device->CreateConstantBufferView(&CbvDesc, CpuDescriptor);
+        Device->CreateShaderResourceView(Result.PointLightBuffer, &SrvDesc, CpuDescriptor);
     }
     
     return Result;

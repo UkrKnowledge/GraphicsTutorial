@@ -12,6 +12,116 @@ char* CombineStrings(const char* Str1, const char* Str2)
     return Result;
 }
 
+model AssetCreateCube(dx12_rasterizer* Dx12Rasterizer)
+{
+    model Result = {};
+
+    {
+        local_global u32 Texel = 0xFFFFFFFF;
+        
+        Result.NumTextures = 1;
+        Result.TextureArray = (texture*)malloc(sizeof(texture));
+        *Result.TextureArray = {};
+        Result.TextureArray[0].Width = 1;
+        Result.TextureArray[0].Height = 1;
+        Result.TextureArray[0].Texels = &Texel;
+        
+        Dx12CreateTexture(Dx12Rasterizer, Result.TextureArray[0].Width, Result.TextureArray[0].Height, (u8*)Result.TextureArray[0].Texels,
+                          &Result.TextureArray[0].GpuTexture, &Result.TextureArray[0].GpuDescriptor);
+    }
+
+    {
+        local_global vertex ModelVertices[] =
+            {
+                // NOTE: Front Face
+                { V3(-0.5f, -0.5f, -0.5f), V2(0, 0), V3(0, 0, 1) },
+                { V3(-0.5f, 0.5f, -0.5f), V2(1, 0), V3(0, 0, 1) },
+                { V3(0.5f, 0.5f, -0.5f), V2(1, 1), V3(0, 0, 1) },
+                { V3(0.5f, -0.5f, -0.5f), V2(0, 1), V3(0, 0, 1) },
+
+                // NOTE: Back Face
+                { V3(-0.5f, -0.5f, 0.5f), V2(0, 0), V3(0, 0, -1) },
+                { V3(-0.5f, 0.5f, 0.5f), V2(1, 0), V3(0, 0, -1) },
+                { V3(0.5f, 0.5f, 0.5f), V2(1, 1), V3(0, 0, -1) }, 
+                { V3(0.5f, -0.5f, 0.5f), V2(0, 1), V3(0, 0, -1) },
+
+                // NOTE: Left Face
+                { V3(-0.5f, 0.5f, -0.5f), V2(0, 0), V3(-1, 0, 0) },
+                { V3(-0.5f, -0.5f, -0.5f), V2(1, 0), V3(-1, 0, 0) },
+                { V3(-0.5f, -0.5f, 0.5f), V2(1, 1), V3(-1, 0, 0) },
+                { V3(-0.5f, 0.5f, 0.5f), V2(0, 1), V3(-1, 0, 0) },
+
+                // NOTE: Right Face
+                { V3(0.5f, 0.5f, -0.5f), V2(0, 0), V3(1, 0, 0) },
+                { V3(0.5f, 0.5f, 0.5f), V2(1, 0), V3(1, 0, 0) },
+                { V3(0.5f, -0.5f, 0.5f), V2(1, 1), V3(1, 0, 0) },
+                { V3(0.5f, -0.5f, -0.5f), V2(0, 1), V3(1, 0, 0) },
+
+                // NOTE: Top Face
+                { V3(-0.5f, 0.5f, -0.5f), V2(0, 0), V3(0, 1, 0) },
+                { V3(-0.5f, 0.5f, 0.5f), V2(1, 0), V3(0, 1, 0) },
+                { V3(0.5f, 0.5f, 0.5f), V2(1, 1), V3(0, 1, 0) },
+                { V3(0.5f, 0.5f, -0.5f), V2(0, 1), V3(0, 1, 0) },
+
+                // NOTE: Bottom Face
+                { V3(-0.5f, -0.5f, -0.5f), V2(0, 0), V3(0, -1, 0) },
+                { V3(0.5f, -0.5f, -0.5f), V2(0, 1), V3(0, -1, 0) },
+                { V3(0.5f, -0.5f, 0.5f), V2(1, 1), V3(0, -1, 0) },
+                { V3(-0.5f, -0.5f, 0.5f), V2(1, 0), V3(0, -1, 0) },
+            };
+
+        local_global u32 ModelIndices[] =
+            {
+                // NOTE: Front Face
+                0, 1, 2,
+                2, 3, 0,
+
+                // NOTE: Back Face
+                4, 7, 6,
+                6, 5, 4,
+
+                // NOTE: Left face
+                8, 9, 10,
+                10, 11, 8,
+
+                // NOTE: Right face
+                12, 13, 14,
+                14, 15, 12,
+
+                // NOTE: Top face
+                16, 17, 18,
+                18, 19, 16,
+
+                // NOTE: Bottom face
+                20, 21, 22,
+                22, 23, 20,
+            };
+
+        
+        Result.VertexCount = ArrayCount(ModelVertices);
+        Result.IndexCount = ArrayCount(ModelIndices);
+
+        Result.NumMeshes = 1;
+        Result.MeshArray = (mesh*)malloc(sizeof(mesh));
+        {
+            mesh Mesh = {};
+            Mesh.IndexOffset = 0;
+            Mesh.IndexCount = Result.IndexCount;
+            Mesh.VertexOffset = 0;
+            Mesh.VertexCount = Result.VertexCount;
+            Mesh.TextureId = 0;
+            Result.MeshArray[0] = Mesh;
+        }
+
+        Result.VertexArray = ModelVertices;
+        Result.IndexArray = ModelIndices;
+        Result.GpuVertexBuffer = Dx12CreateBufferAsset(Dx12Rasterizer, Result.VertexCount * sizeof(vertex), D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER, ModelVertices);
+        Result.GpuIndexBuffer = Dx12CreateBufferAsset(Dx12Rasterizer, Result.IndexCount * sizeof(u32), D3D12_RESOURCE_STATE_INDEX_BUFFER, ModelIndices);
+    }
+    
+    return Result;
+}
+
 model AssetLoadModel(dx12_rasterizer* Dx12Rasterizer, char* FolderPath, char* FileName)
 {
     model Result = {};
@@ -75,33 +185,8 @@ model AssetLoadModel(dx12_rasterizer* Dx12Rasterizer, char* FolderPath, char* Fi
             }
 
             // NOTE: Копюємо дані до Upload Heap
-            {
-                D3D12_RESOURCE_DESC Desc = {};
-                Desc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
-                Desc.Width = CurrTexture->Width;
-                Desc.Height = CurrTexture->Height;
-                Desc.DepthOrArraySize = 1;
-                Desc.MipLevels = u32(ceil(log2(max(Desc.Width, Desc.Height))) + 1);
-                Desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-                Desc.SampleDesc.Count = 1;
-                Desc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
-                CurrTexture->GpuTexture = Dx12CreateTextureAsset(Dx12Rasterizer,
-                                                                 &Desc,
-                                                                 D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
-                                                                 (u8*)CurrTexture->Texels);
-
-                D3D12_SHADER_RESOURCE_VIEW_DESC SrvDesc = {};
-                SrvDesc.Format = Desc.Format;
-                SrvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
-                SrvDesc.Shader4ComponentMapping = D3D12_ENCODE_SHADER_4_COMPONENT_MAPPING(0, 1, 2, 3);
-                SrvDesc.Texture2D.MostDetailedMip = 0;
-                SrvDesc.Texture2D.MipLevels = Desc.MipLevels;
-                SrvDesc.Texture2D.PlaneSlice = 0;
-
-                D3D12_CPU_DESCRIPTOR_HANDLE CpuDescriptor = {};
-                Dx12DescriptorAllocate(&Dx12Rasterizer->ShaderDescHeap, &CpuDescriptor, &CurrTexture->GpuDescriptor);
-                Dx12Rasterizer->Device->CreateShaderResourceView(CurrTexture->GpuTexture, &SrvDesc, CpuDescriptor);
-            }
+            Dx12CreateTexture(Dx12Rasterizer, CurrTexture->Width, CurrTexture->Height, (u8*)CurrTexture->Texels,
+                              &CurrTexture->GpuTexture, &CurrTexture->GpuDescriptor);
             
             stbi_image_free(UnFlippedTexels);
             
@@ -180,35 +265,8 @@ model AssetLoadModel(dx12_rasterizer* Dx12Rasterizer, char* FolderPath, char* Fi
         CurrVertex->Pos = CurrVertex->Pos - V3(0.5f);
     }
 
-    {
-        D3D12_RESOURCE_DESC Desc = {};
-        Desc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
-        Desc.Width = Result.VertexCount * sizeof(vertex);
-        Desc.Height = 1;
-        Desc.DepthOrArraySize = 1;
-        Desc.MipLevels = 1;
-        Desc.Format = DXGI_FORMAT_UNKNOWN;
-        Desc.SampleDesc.Count = 1;
-        Desc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
-        Result.GpuVertexBuffer = Dx12CreateBufferAsset(Dx12Rasterizer, &Desc,
-                                                       D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER,
-                                                       Result.VertexArray);
-    }
-    
-    {
-        D3D12_RESOURCE_DESC Desc = {};
-        Desc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
-        Desc.Width = Result.IndexCount * sizeof(u32);
-        Desc.Height = 1;
-        Desc.DepthOrArraySize = 1;
-        Desc.MipLevels = 1;
-        Desc.Format = DXGI_FORMAT_UNKNOWN;
-        Desc.SampleDesc.Count = 1;
-        Desc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
-        Result.GpuIndexBuffer = Dx12CreateBufferAsset(Dx12Rasterizer, &Desc,
-                                                      D3D12_RESOURCE_STATE_INDEX_BUFFER,
-                                                      Result.IndexArray);
-    }
+    Result.GpuVertexBuffer = Dx12CreateBufferAsset(Dx12Rasterizer, Result.VertexCount * sizeof(vertex), D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER, Result.VertexArray);
+    Result.GpuIndexBuffer = Dx12CreateBufferAsset(Dx12Rasterizer, Result.IndexCount * sizeof(u32), D3D12_RESOURCE_STATE_INDEX_BUFFER, Result.IndexArray);
     
     return Result;
 }

@@ -81,66 +81,8 @@ int APIENTRY WinMain(HINSTANCE hInstance,
     GlobalState.RasterizerType = RasterizerType_Dx12;
     GlobalState.SwRasterizer = SwRasterizerCreate(GlobalState.WindowHandle, 600, 600);
     GlobalState.Dx12Rasterizer = Dx12RasterizerCreate(GlobalState.WindowHandle, 1920, 1080);
-    
-    {
-        local_global vertex ModelVertices[] =
-        {
-            // NOTE: Front Face
-            { V3(-0.5f, -0.5f, -0.5f), V2(0, 0) },
-            { V3(-0.5f, 0.5f, -0.5f), V2(1, 0) },
-            { V3(0.5f, 0.5f, -0.5f), V2(1, 1) },
-            { V3(0.5f, -0.5f, -0.5f), V2(0, 1) },
 
-            // NOTE: Back Face
-            { V3(-0.5f, -0.5f, 0.5f), V2(0, 0) },
-            { V3(-0.5f, 0.5f, 0.5f), V2(1, 0) },
-            { V3(0.5f, 0.5f, 0.5f), V2(1, 1) }, 
-            { V3(0.5f, -0.5f, 0.5f), V2(0, 1) },
-        };
-
-        local_global u32 ModelIndices[] =
-        {
-            // NOTE: Front Face
-            0, 1, 2,
-            2, 3, 0,
-
-            // NOTE: Back Face
-            6, 5, 4,
-            4, 7, 6,
-
-            // NOTE: Left face
-            4, 5, 1,
-            1, 0, 4,
-
-            // NOTE: Right face
-            3, 2, 6,
-            6, 7, 3,
-
-            // NOTE: Top face
-            1, 5, 6,
-            6, 2, 1,
-
-            // NOTE: Bottom face
-            4, 0, 3,
-            3, 7, 4,
-        };
-                
-        local_global mesh Mesh = {};
-        Mesh.IndexOffset = 0;
-        Mesh.IndexCount = ArrayCount(ModelIndices);
-        Mesh.VertexOffset = 0;
-        Mesh.VertexCount = ArrayCount(ModelVertices);
-        
-        GlobalState.CubeModel = {};
-        GlobalState.CubeModel.NumMeshes = 1;
-        GlobalState.CubeModel.MeshArray = &Mesh;
-
-        GlobalState.CubeModel.VertexCount = ArrayCount(ModelVertices);
-        GlobalState.CubeModel.VertexArray = ModelVertices;
-        GlobalState.CubeModel.IndexCount = ArrayCount(ModelIndices);
-        GlobalState.CubeModel.IndexArray = ModelIndices;
-    }
-
+    GlobalState.CubeModel = AssetCreateCube(&GlobalState.Dx12Rasterizer);
     GlobalState.DuckModel = AssetLoadModel(&GlobalState.Dx12Rasterizer, "Duck\\", "Duck.gltf");
     GlobalState.SponzaModel = AssetLoadModel(&GlobalState.Dx12Rasterizer, "Sponza\\", "Sponza.gltf");
     
@@ -361,9 +303,8 @@ int APIENTRY WinMain(HINSTANCE hInstance,
         m4 WTransform = (TranslationMatrix(0, 0, 1) *
                          RotationMatrix(0, Pi32 * 0.5f, 0) *
                          ScaleMatrix(1, 1, 1));
-        m4 WVPTransform = (PerspectiveMatrix(60.0f, AspectRatio, 0.01f, 1000.0f) *
-                           CameraTransform *
-                           WTransform);
+        m4 VPTransform = (PerspectiveMatrix(60.0f, AspectRatio, 0.01f, 1000.0f) *
+                          CameraTransform);
 
         switch (GlobalState.RasterizerType)
         {
@@ -389,7 +330,7 @@ int APIENTRY WinMain(HINSTANCE hInstance,
                     }
                 }
 
-                DrawModel(Rasterizer, &GlobalState.SponzaModel, WVPTransform, Sampler);
+                DrawModel(Rasterizer, &GlobalState.SponzaModel, VPTransform * WTransform, Sampler);
         
                 BITMAPINFO BitmapInfo = {};
                 BitmapInfo.bmiHeader.biSize = sizeof(tagBITMAPINFOHEADER);
@@ -419,19 +360,6 @@ int APIENTRY WinMain(HINSTANCE hInstance,
                 dx12_rasterizer* Rasterizer = &GlobalState.Dx12Rasterizer;
                 ID3D12GraphicsCommandList* CommandList = Rasterizer->CommandList;
 
-                transform_buffer_cpu TransformBufferCopy = {};
-                TransformBufferCopy.WTransform = WTransform;
-                TransformBufferCopy.WVPTransform = WVPTransform;
-                TransformBufferCopy.NormalWTransform = Transpose(Inverse(WTransform));
-                TransformBufferCopy.Shininess = 4.0f;
-                TransformBufferCopy.SpecularStrength = 1.0f;
-                Dx12CopyDataToBuffer(Rasterizer,
-                                     D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER,
-                                     D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER,
-                                     &TransformBufferCopy,
-                                     sizeof(TransformBufferCopy),
-                                     Rasterizer->TransformBuffer);
-                
                 local_global f32 Time = 0.0f;
                 Time += FrameTime;
                 if (Time > 2.0f * Pi32)
@@ -439,17 +367,54 @@ int APIENTRY WinMain(HINSTANCE hInstance,
                     Time -= 2.0f * Pi32;
                 }
 
-                light_buffer_cpu LightBufferCopy = {};
-                LightBufferCopy.LightAmbientIntensity = 0.4f;
-                LightBufferCopy.LightColor = V3(1.0f, 0.9f, 0.1f);
-                LightBufferCopy.LightDirection = Normalize(V3(cos(Time), -1.0f, 0.0f));
-                LightBufferCopy.CameraPos = GlobalState.Camera.Pos;
-                Dx12CopyDataToBuffer(Rasterizer,
-                                     D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER,
-                                     D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER,
-                                     &LightBufferCopy,
-                                     sizeof(LightBufferCopy),
-                                     Rasterizer->LightBuffer);
+                point_light_cpu PointLights[NUM_POINT_LIGHTS] = {};
+                {
+                    PointLights[0].Pos = V3(0, 0.2f + 0.05f * sin(Time), 1);
+                    PointLights[0].DivisorConstant = 0.4f;
+                    PointLights[0].Color = 0.3f * V3(1.0f, 0.3f, 0.3f);
+
+                    PointLights[1].Pos = V3(0.1f * cos(Time), 0.1f, 1.0f + 0.1f*sin(Time));
+                    PointLights[1].DivisorConstant = 0.4f;
+                    PointLights[1].Color = 0.2f * V3(0.0f, 1.0f, 0.3f);
+
+                    Dx12CopyDataToBuffer(Rasterizer,
+                                         D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
+                                         D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
+                                         PointLights,
+                                         sizeof(PointLights),
+                                         Rasterizer->PointLightBuffer);
+
+                    for (i32 PlIndex = 0; PlIndex < NUM_POINT_LIGHTS; ++PlIndex)
+                    {
+                        m4 PlWTransform = TranslationMatrix(PointLights[PlIndex].Pos)*ScaleMatrix(0.01f, 0.01f, 0.01f);
+                        Dx12UploadTransformBuffer(Rasterizer,
+                                                  Rasterizer->PlTransformBuffers[PlIndex],
+                                                  PlWTransform,
+                                                  VPTransform,
+                                                  0.001f, 0.0f);
+                    }
+                }
+
+                Dx12UploadTransformBuffer(Rasterizer,
+                                          Rasterizer->SponzaTransformBuffer,
+                                          WTransform,
+                                          VPTransform,
+                                          100.0f, 1.0f);
+
+                {
+                    dir_light_buffer_cpu LightBufferCopy = {};
+                    LightBufferCopy.LightAmbientIntensity = 0.4f;
+                    LightBufferCopy.LightColor = V3(1.0f, 1.0f, 1.0f);
+                    LightBufferCopy.LightDirection = Normalize(V3(cos(Time), -1.0f, 0.0f));
+                    LightBufferCopy.NumPointLights = ArrayCount(PointLights);
+                    LightBufferCopy.CameraPos = GlobalState.Camera.Pos;
+                    Dx12CopyDataToBuffer(Rasterizer,
+                                         D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER,
+                                         D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER,
+                                         &LightBufferCopy,
+                                         sizeof(LightBufferCopy),
+                                         Rasterizer->DirLightBuffer);
+                }
                 
                 {
                     D3D12_RESOURCE_BARRIER Barrier = {};
@@ -484,38 +449,19 @@ int APIENTRY WinMain(HINSTANCE hInstance,
                 ScissorRect.bottom = Rasterizer->RenderHeight;
                 CommandList->RSSetScissorRects(1, &ScissorRect);
 
-                model* CurrModel = &GlobalState.SponzaModel;
-                {
-                    D3D12_INDEX_BUFFER_VIEW View = {};
-                    View.BufferLocation = CurrModel->GpuIndexBuffer->GetGPUVirtualAddress();
-                    View.SizeInBytes = sizeof(u32) * CurrModel->IndexCount;
-                    View.Format = DXGI_FORMAT_R32_UINT;
-                    CommandList->IASetIndexBuffer(&View);
-                }
-
-                {
-                    D3D12_VERTEX_BUFFER_VIEW Views[1] = {};
-                    Views[0].BufferLocation = CurrModel->GpuVertexBuffer->GetGPUVirtualAddress();
-                    Views[0].SizeInBytes = sizeof(vertex) * CurrModel->VertexCount;
-                    Views[0].StrideInBytes = sizeof(vertex);
-                    CommandList->IASetVertexBuffers(0, 1, Views);
-                }
-
                 CommandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
                 CommandList->SetGraphicsRootSignature(Rasterizer->ModelRootSignature);
                 CommandList->SetPipelineState(Rasterizer->ModelPipeline);
 
                 CommandList->SetDescriptorHeaps(1, &Rasterizer->ShaderDescHeap.Heap);
-                CommandList->SetGraphicsRootDescriptorTable(1, Rasterizer->TransformDescriptor);
+                CommandList->SetGraphicsRootDescriptorTable(1, Rasterizer->LightDescriptor);
 
-                for (u32 MeshId = 0; MeshId < CurrModel->NumMeshes; ++MeshId)
+                Dx12RenderModel(CommandList, &GlobalState.SponzaModel, Rasterizer->SponzaTransformDescriptor);
+
+                for (i32 PlIndex = 0; PlIndex < NUM_POINT_LIGHTS; ++PlIndex)
                 {
-                    mesh* CurrMesh = CurrModel->MeshArray + MeshId;
-                    texture* CurrTexture = CurrModel->TextureArray + CurrMesh->TextureId;
-                        
-                    CommandList->SetGraphicsRootDescriptorTable(0, CurrTexture->GpuDescriptor);
-                    CommandList->DrawIndexedInstanced(CurrMesh->IndexCount, 1, CurrMesh->IndexOffset, CurrMesh->VertexOffset, 0);
+                    Dx12RenderModel(CommandList, &GlobalState.CubeModel, Rasterizer->PlTransformDescriptors[PlIndex]);
                 }
                 
                 {
