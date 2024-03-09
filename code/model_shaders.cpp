@@ -88,8 +88,8 @@ float3 EvaluatePhong(float3 SurfaceColor, float3 SurfaceNormal, float3 SurfaceWo
     float SpecularIntensity = 0;
     {
         float3 CameraDirection = normalize(DirLightUniforms.CameraPos - SurfaceWorldPos);
-        float3 ReflectionVector = -(NegativeLightDir - 2 * dot(NegativeLightDir, SurfaceNormal) * SurfaceNormal);
-        SpecularIntensity = SurfaceSpecularStrength * pow(max(0, dot(ReflectionVector, CameraDirection)), SurfaceShininess);
+        float3 HalfVector = normalize(NegativeLightDir + CameraDirection);
+        SpecularIntensity = SurfaceSpecularStrength * pow(max(0, dot(HalfVector, SurfaceNormal)), SurfaceShininess);
     }
     
     float3 MixedColor = LightColor * SurfaceColor;
@@ -111,9 +111,9 @@ ps_output ModelPsMain(ps_input Input)
     Result.Color.rgb = float3(0, 0, 0);
 
     // NOTE: Освітлюємо пікселя з напрямним світлом
-    //Result.Color.rgb = EvaluatePhong(SurfaceColor.rgb, SurfaceNormal, Input.WorldPos,
-    //                                 RenderUniforms.Shininess, RenderUniforms.SpecularStrength,
-    //                                 DirLightUniforms.Direction, DirLightUniforms.Color, DirLightUniforms.AmbientIntensity);
+    Result.Color.rgb = EvaluatePhong(SurfaceColor.rgb, SurfaceNormal, Input.WorldPos,
+                                     RenderUniforms.Shininess, RenderUniforms.SpecularStrength,
+                                     DirLightUniforms.Direction, DirLightUniforms.Color, DirLightUniforms.AmbientIntensity);
 
     // NOTE: Освітлюємо пікселя з точковими світлами
     for (int PointLightId = 0; PointLightId < DirLightUniforms.NumPointLights; ++PointLightId)

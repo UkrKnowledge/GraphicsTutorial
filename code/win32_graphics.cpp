@@ -85,6 +85,8 @@ int APIENTRY WinMain(HINSTANCE hInstance,
     GlobalState.CubeModel = AssetCreateCube(&GlobalState.Dx12Rasterizer);
     GlobalState.DuckModel = AssetLoadModel(&GlobalState.Dx12Rasterizer, "Duck\\", "Duck.gltf");
     GlobalState.SponzaModel = AssetLoadModel(&GlobalState.Dx12Rasterizer, "Sponza\\", "Sponza.gltf");
+
+    GlobalState.Camera.Pos = V3(0, 0.06, 0.7);
     
     texture CheckerBoardTexture = {};
     sampler Sampler = {};
@@ -366,16 +368,16 @@ int APIENTRY WinMain(HINSTANCE hInstance,
                 {
                     Time -= 2.0f * Pi32;
                 }
-
+                
                 point_light_cpu PointLights[NUM_POINT_LIGHTS] = {};
                 {
-                    PointLights[0].Pos = V3(0, 0.2f + 0.05f * sin(Time), 1);
+                    PointLights[0].Pos = V3(0, 0.065f + 0.04f * sin(Time), 1);
                     PointLights[0].DivisorConstant = 0.4f;
-                    PointLights[0].Color = 0.3f * V3(1.0f, 0.3f, 0.3f);
+                    PointLights[0].Color = 0.4f * V3(1.0f, 0.3f, 0.3f);
 
                     PointLights[1].Pos = V3(0.1f * cos(Time), 0.1f, 1.0f + 0.1f*sin(Time));
                     PointLights[1].DivisorConstant = 0.4f;
-                    PointLights[1].Color = 0.2f * V3(0.0f, 1.0f, 0.3f);
+                    PointLights[1].Color = 0.3f * V3(0.0f, 1.0f, 0.3f);
 
                     Dx12CopyDataToBuffer(Rasterizer,
                                          D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
@@ -404,7 +406,7 @@ int APIENTRY WinMain(HINSTANCE hInstance,
                 {
                     dir_light_buffer_cpu LightBufferCopy = {};
                     LightBufferCopy.LightAmbientIntensity = 0.4f;
-                    LightBufferCopy.LightColor = V3(1.0f, 1.0f, 1.0f);
+                    LightBufferCopy.LightColor = 0.3f*V3(1.0f, 1.0f, 1.0f);
                     LightBufferCopy.LightDirection = Normalize(V3(cos(Time), -1.0f, 0.0f));
                     LightBufferCopy.NumPointLights = ArrayCount(PointLights);
                     LightBufferCopy.CameraPos = GlobalState.Camera.Pos;
