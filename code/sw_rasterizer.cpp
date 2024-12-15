@@ -322,7 +322,7 @@ void DrawModel(sw_rasterizer* Rasterizer, model* Model, m4 Transform, sampler Sa
     for (u32 MeshId = 0; MeshId < Model->NumMeshes; ++MeshId)
     {
         mesh* CurrMesh = Model->MeshArray + MeshId;
-        texture CurrTexture = Model->TextureArray[CurrMesh->TextureId];
+        texture CurrTexture = Model->ColorTextureArray[CurrMesh->TextureId];
         
         for (u32 IndexId = 0; IndexId < CurrMesh->IndexCount; IndexId += 3)
         {

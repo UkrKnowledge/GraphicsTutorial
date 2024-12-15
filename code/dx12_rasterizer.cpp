@@ -354,7 +354,8 @@ void Dx12CreateConstantBuffer(dx12_rasterizer* Rasterizer, u32 Size, ID3D12Resou
 ID3D12Resource* Dx12CreateTextureAsset(dx12_rasterizer* Rasterizer,
                                        D3D12_RESOURCE_DESC* Desc,
                                        D3D12_RESOURCE_STATES InitialState,
-                                       void* Texels)
+                                       void* Texels,
+                                       b32 IsNormalTexture = false)
 {
 #define MAX_MIP_LEVELS 32
     ID3D12Resource* Result = 0;
@@ -381,11 +382,36 @@ ID3D12Resource* Dx12CreateTextureAsset(dx12_rasterizer* Rasterizer,
         D3D12_PLACED_SUBRESOURCE_FOOTPRINT* CurrFootPrint = MipFootPrints + 0;
         
         CurrFootPrint->Offset += UploadOffset;
-        for (u32 Y = 0; Y < Desc->Height; ++Y)
+        if (IsNormalTexture)
         {
-            u8* Src = (u8*)Texels + (Y * CurrFootPrint->Footprint.Width) * BytesPerPixel;
-            u8* Dest = UploadTexels + (Y * CurrFootPrint->Footprint.RowPitch);
-            memcpy(Dest, Src, BytesPerPixel * CurrFootPrint->Footprint.Width);
+            for (u32 Y = 0; Y < Desc->Height; ++Y)
+            {
+                for (u32 X = 0; X < Desc->Width; ++X)
+                {
+                    u8* Src = (u8*)Texels + (Y * CurrFootPrint->Footprint.Width + X) * BytesPerPixel;
+                    u8* Dest = UploadTexels + (Y * CurrFootPrint->Footprint.RowPitch) + X * sizeof(u32);
+
+                    v3 Normal = V3(Src[0], Src[1], Src[2]) / 255.0f;
+                    Normal = 2.0f * Normal - V3(1.0f);
+                    Normal = Normalize(Normal);
+                    Normal = 0.5f * Normal + V3(0.5f);
+                    Normal = Normal * 255.0f;
+                    
+                    Dest[0] = u8(round(Normal.x));
+                    Dest[1] = u8(round(Normal.y));
+                    Dest[2] = u8(round(Normal.z));
+                    Dest[3] = 0;
+                }
+            }
+        }
+        else
+        {
+            for (u32 Y = 0; Y < Desc->Height; ++Y)
+            {
+                u8* Src = (u8*)Texels + (Y * CurrFootPrint->Footprint.Width) * BytesPerPixel;
+                u8* Dest = UploadTexels + (Y * CurrFootPrint->Footprint.RowPitch);
+                memcpy(Dest, Src, BytesPerPixel * CurrFootPrint->Footprint.Width);
+            }
         }
     }
 
@@ -412,11 +438,39 @@ ID3D12Resource* Dx12CreateTextureAsset(dx12_rasterizer* Rasterizer,
                     texel_rgba8* SrcTexel10 = SrcTexelBase + (2*Y + 1) * PrevFootPrint->Footprint.Width + 2*X + 0;
                     texel_rgba8* SrcTexel11 = SrcTexelBase + (2*Y + 1) * PrevFootPrint->Footprint.Width + 2*X + 1;
 
-                    // NOTE: Обчислюємо середний колір
-                    DstTexel->Red = u8(round(f32(SrcTexel00->Red + SrcTexel01->Red + SrcTexel10->Red + SrcTexel11->Red) / 4.0f));
-                    DstTexel->Green = u8(round(f32(SrcTexel00->Green + SrcTexel01->Green + SrcTexel10->Green + SrcTexel11->Green) / 4.0f));
-                    DstTexel->Blue = u8(round(f32(SrcTexel00->Blue + SrcTexel01->Blue + SrcTexel10->Blue + SrcTexel11->Blue) / 4.0f));
-                    DstTexel->Alpha = u8(round(f32(SrcTexel00->Alpha + SrcTexel01->Alpha + SrcTexel10->Alpha + SrcTexel11->Alpha) / 4.0f));
+                    if (IsNormalTexture)
+                    {
+                        // NOTE: Обчислюємо середню нормаль
+                        v3 SrcNormal00 = V3(SrcTexel00->Red, SrcTexel00->Green, SrcTexel00->Blue) / 255.0f;
+                        v3 SrcNormal01 = V3(SrcTexel01->Red, SrcTexel01->Green, SrcTexel01->Blue) / 255.0f;
+                        v3 SrcNormal10 = V3(SrcTexel10->Red, SrcTexel10->Green, SrcTexel10->Blue) / 255.0f;
+                        v3 SrcNormal11 = V3(SrcTexel11->Red, SrcTexel11->Green, SrcTexel11->Blue) / 255.0f;
+
+                        SrcNormal00 = SrcNormal00 * 2.0f - V3(1.0f);
+                        SrcNormal01 = SrcNormal01 * 2.0f - V3(1.0f);
+                        SrcNormal10 = SrcNormal10 * 2.0f - V3(1.0f);
+                        SrcNormal11 = SrcNormal11 * 2.0f - V3(1.0f);
+
+                        v3 AverageNormal = (SrcNormal00 +
+                                            SrcNormal01 +
+                                            SrcNormal10 +
+                                            SrcNormal11) / 4.0f;
+                        AverageNormal = Normalize(AverageNormal);
+                        AverageNormal = (AverageNormal * 0.5f + V3(0.5f)) * 255.0f;
+
+                        DstTexel->Red = u8(round(AverageNormal.r));
+                        DstTexel->Green = u8(round(AverageNormal.g));
+                        DstTexel->Blue = u8(round(AverageNormal.b));
+                        DstTexel->Alpha = 0;
+                    }
+                    else
+                    {
+                        // NOTE: Обчислюємо середній колір
+                        DstTexel->Red = u8(round(f32(SrcTexel00->Red + SrcTexel01->Red + SrcTexel10->Red + SrcTexel11->Red) / 4.0f));
+                        DstTexel->Green = u8(round(f32(SrcTexel00->Green + SrcTexel01->Green + SrcTexel10->Green + SrcTexel11->Green) / 4.0f));
+                        DstTexel->Blue = u8(round(f32(SrcTexel00->Blue + SrcTexel01->Blue + SrcTexel10->Blue + SrcTexel11->Blue) / 4.0f));
+                        DstTexel->Alpha = u8(round(f32(SrcTexel00->Alpha + SrcTexel01->Alpha + SrcTexel10->Alpha + SrcTexel11->Alpha) / 4.0f));
+                    }
                 }
             }
 
@@ -481,7 +535,8 @@ ID3D12Resource* Dx12CreateTextureAsset(dx12_rasterizer* Rasterizer,
 }
 
 void Dx12CreateTexture(dx12_rasterizer* Rasterizer, u32 Width, u32 Height, u8* Texels,
-                       ID3D12Resource** OutResource, D3D12_GPU_DESCRIPTOR_HANDLE* OutDescriptor)
+                       ID3D12Resource** OutResource, D3D12_GPU_DESCRIPTOR_HANDLE* OutDescriptor,
+                       b32 IsNormalTexture = false)
 {
     D3D12_RESOURCE_DESC Desc = {};
     Desc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
@@ -495,7 +550,8 @@ void Dx12CreateTexture(dx12_rasterizer* Rasterizer, u32 Width, u32 Height, u8* T
     *OutResource = Dx12CreateTextureAsset(Rasterizer,
                                           &Desc,
                                           D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
-                                          Texels);
+                                          Texels,
+                                          IsNormalTexture);
 
     D3D12_SHADER_RESOURCE_VIEW_DESC SrvDesc = {};
     SrvDesc.Format = Desc.Format;
@@ -558,7 +614,7 @@ void Dx12RenderModel(ID3D12GraphicsCommandList* CommandList, model* Model, D3D12
     for (u32 MeshId = 0; MeshId < Model->NumMeshes; ++MeshId)
     {
         mesh* CurrMesh = Model->MeshArray + MeshId;
-        texture* CurrTexture = Model->TextureArray + CurrMesh->TextureId;
+        texture* CurrTexture = Model->ColorTextureArray + CurrMesh->TextureId;
                         
         CommandList->SetGraphicsRootDescriptorTable(0, CurrTexture->GpuDescriptor);
         CommandList->DrawIndexedInstanced(CurrMesh->IndexCount, 1, CurrMesh->IndexOffset, CurrMesh->VertexOffset, 0);
@@ -669,7 +725,7 @@ dx12_rasterizer Dx12RasterizerCreate(HWND WindowHandle, u32 Width, u32 Height)
 
     Result.RtvHeap = Dx12DescriptorHeapCreate(&Result, D3D12_DESCRIPTOR_HEAP_TYPE_RTV, 2);
     Result.DsvHeap = Dx12DescriptorHeapCreate(&Result, D3D12_DESCRIPTOR_HEAP_TYPE_DSV, 1);
-    Result.ShaderDescHeap = Dx12DescriptorHeapCreate(&Result, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, 50, D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE);
+    Result.ShaderDescHeap = Dx12DescriptorHeapCreate(&Result, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, 200, D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE);
     
     {
         D3D12_RESOURCE_DESC Desc = {};
@@ -708,14 +764,20 @@ dx12_rasterizer Dx12RasterizerCreate(HWND WindowHandle, u32 Width, u32 Height)
             D3D12_ROOT_PARAMETER RootParameters[3] = {};
 
             // NOTE: Творимо першу таблицю дескрипторів
-            D3D12_DESCRIPTOR_RANGE Table1Range[1] = {};
+            D3D12_DESCRIPTOR_RANGE Table1Range[2] = {};
             {
                 Table1Range[0].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
                 Table1Range[0].NumDescriptors = 1;
                 Table1Range[0].BaseShaderRegister = 0;
                 Table1Range[0].RegisterSpace = 0;
-                Table1Range[0].OffsetInDescriptorsFromTableStart = 0;
-
+                Table1Range[0].OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+                
+                Table1Range[1].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+                Table1Range[1].NumDescriptors = 1;
+                Table1Range[1].BaseShaderRegister = 2;
+                Table1Range[1].RegisterSpace = 0;
+                Table1Range[1].OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+                
                 RootParameters[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
                 RootParameters[0].DescriptorTable.NumDescriptorRanges = ArrayCount(Table1Range);
                 RootParameters[0].DescriptorTable.pDescriptorRanges = Table1Range;
@@ -826,7 +888,7 @@ dx12_rasterizer Dx12RasterizerCreate(HWND WindowHandle, u32 Width, u32 Height)
         Desc.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ALL;
         Desc.DepthStencilState.DepthFunc = D3D12_COMPARISON_FUNC_LESS;
         
-        D3D12_INPUT_ELEMENT_DESC InputElementDescs[3] = {};
+        D3D12_INPUT_ELEMENT_DESC InputElementDescs[5] = {};
         InputElementDescs[0].SemanticName = "POSITION";
         InputElementDescs[0].SemanticIndex = 0;
         InputElementDescs[0].Format = DXGI_FORMAT_R32G32B32_FLOAT;
@@ -847,6 +909,20 @@ dx12_rasterizer Dx12RasterizerCreate(HWND WindowHandle, u32 Width, u32 Height)
         InputElementDescs[2].InputSlot = 0;
         InputElementDescs[2].AlignedByteOffset = D3D12_APPEND_ALIGNED_ELEMENT;
         InputElementDescs[2].InputSlotClass = D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA;
+
+        InputElementDescs[3].SemanticName = "TANGENT";
+        InputElementDescs[3].SemanticIndex = 0;
+        InputElementDescs[3].Format = DXGI_FORMAT_R32G32B32_FLOAT;
+        InputElementDescs[3].InputSlot = 0;
+        InputElementDescs[3].AlignedByteOffset = D3D12_APPEND_ALIGNED_ELEMENT;
+        InputElementDescs[3].InputSlotClass = D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA;
+        
+        InputElementDescs[4].SemanticName = "BITANGENT";
+        InputElementDescs[4].SemanticIndex = 0;
+        InputElementDescs[4].Format = DXGI_FORMAT_R32G32B32_FLOAT;
+        InputElementDescs[4].InputSlot = 0;
+        InputElementDescs[4].AlignedByteOffset = D3D12_APPEND_ALIGNED_ELEMENT;
+        InputElementDescs[4].InputSlotClass = D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA;
         
         Desc.InputLayout.pInputElementDescs = InputElementDescs;
         Desc.InputLayout.NumElements = ArrayCount(InputElementDescs);

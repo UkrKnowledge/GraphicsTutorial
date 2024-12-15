@@ -12,25 +12,50 @@ char* CombineStrings(const char* Str1, const char* Str2)
     return Result;
 }
 
+texture AssetCreateDefaultNormalMap()
+{
+    local_global u32 NormalTexel = 0xFFFF0000;
+    
+    texture Result = {};
+    Result.Width = 1;
+    Result.Height = 1;
+    Result.Texels = &NormalTexel;
+    
+    return Result;
+}
+
 model AssetCreateCube(dx12_rasterizer* Dx12Rasterizer)
 {
     model Result = {};
 
     {
-        local_global u32 Texel = 0xFFFFFFFF;
-        
+        local_global u32 ColorTexel = 0xFFFFFFFF;
+
         Result.NumTextures = 1;
-        Result.TextureArray = (texture*)malloc(sizeof(texture));
-        *Result.TextureArray = {};
-        Result.TextureArray[0].Width = 1;
-        Result.TextureArray[0].Height = 1;
-        Result.TextureArray[0].Texels = &Texel;
+        Result.ColorTextureArray = (texture*)malloc(sizeof(texture));
+        Result.NormalTextureArray = (texture*)malloc(sizeof(texture));
         
-        Dx12CreateTexture(Dx12Rasterizer, Result.TextureArray[0].Width, Result.TextureArray[0].Height, (u8*)Result.TextureArray[0].Texels,
-                          &Result.TextureArray[0].GpuTexture, &Result.TextureArray[0].GpuDescriptor);
+        // NOTE: Творимо дифузну текстуру
+        {
+            *Result.ColorTextureArray = {};
+            Result.ColorTextureArray[0].Width = 1;
+            Result.ColorTextureArray[0].Height = 1;
+            Result.ColorTextureArray[0].Texels = &ColorTexel;
+            
+            Dx12CreateTexture(Dx12Rasterizer, Result.ColorTextureArray[0].Width, Result.ColorTextureArray[0].Height, (u8*)Result.ColorTextureArray[0].Texels,
+                              &Result.ColorTextureArray[0].GpuTexture, &Result.ColorTextureArray[0].GpuDescriptor);
+        }
+        
+        // NOTE: Творимо нормаль текстуру
+        {
+            Result.NormalTextureArray[0] = AssetCreateDefaultNormalMap();
+            Dx12CreateTexture(Dx12Rasterizer, Result.NormalTextureArray[0].Width, Result.NormalTextureArray[0].Height, (u8*)Result.NormalTextureArray[0].Texels,
+                              &Result.NormalTextureArray[0].GpuTexture, &Result.NormalTextureArray[0].GpuDescriptor);
+        }
     }
 
     {
+        // TODO: Я не обчислюю дотичні/бідотичні вектори тутай
         local_global vertex ModelVertices[] =
             {
                 // NOTE: Front Face
@@ -129,7 +154,7 @@ model AssetLoadModel(dx12_rasterizer* Dx12Rasterizer, char* FolderPath, char* Fi
     char* FilePath = CombineStrings(FolderPath, FileName);
     
     Assimp::Importer Importer;
-    const aiScene* Scene = Importer.ReadFile(FilePath, aiProcess_Triangulate | aiProcess_OptimizeMeshes);
+    const aiScene* Scene = Importer.ReadFile(FilePath, aiProcess_CalcTangentSpace | aiProcess_Triangulate | aiProcess_OptimizeMeshes);
     if (!Scene || Scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !Scene->mRootNode)
     {
         const char* Error = Importer.GetErrorString();
@@ -154,7 +179,8 @@ model AssetLoadModel(dx12_rasterizer* Dx12Rasterizer, char* FolderPath, char* Fi
         }
     }
 
-    Result.TextureArray = (texture*)malloc(sizeof(texture) * Result.NumTextures);
+    Result.ColorTextureArray = (texture*)malloc(sizeof(texture) * Result.NumTextures);
+    Result.NormalTextureArray = (texture*)malloc(sizeof(texture) * Result.NumTextures);
 
     u32 CurrTextureId = 0;
     for (u32 MaterialId = 0; MaterialId < Scene->mNumMaterials; ++MaterialId)
@@ -163,32 +189,75 @@ model AssetLoadModel(dx12_rasterizer* Dx12Rasterizer, char* FolderPath, char* Fi
 
         if (CurrMaterial->GetTextureCount(aiTextureType_DIFFUSE) > 0)
         {
-            aiString TextureName = {};
-            CurrMaterial->GetTexture(aiTextureType_DIFFUSE, 0, &TextureName);
-
-            texture* CurrTexture = Result.TextureArray + CurrTextureId;
-
-            char* TexturePath = CombineStrings(FolderPath, TextureName.C_Str());
-            
-            i32 NumChannels = 0;
-            u32* UnFlippedTexels = (u32*)stbi_load(TexturePath, &CurrTexture->Width, &CurrTexture->Height, &NumChannels, 4);
-
-            CurrTexture->Texels = (u32*)malloc(sizeof(u32) * CurrTexture->Width * CurrTexture->Height);
-
-            for (u32 Y = 0; Y < CurrTexture->Height; ++Y)
+            // NOTE: Завантажуємо дифузну текстуру
             {
-                for (u32 X = 0; X < CurrTexture->Width; ++X)
+                aiString TextureName = {};
+                CurrMaterial->GetTexture(aiTextureType_DIFFUSE, 0, &TextureName);
+
+                texture* CurrTexture = Result.ColorTextureArray + CurrTextureId;
+
+                char* TexturePath = CombineStrings(FolderPath, TextureName.C_Str());
+            
+                i32 NumChannels = 0;
+                u32* UnFlippedTexels = (u32*)stbi_load(TexturePath, &CurrTexture->Width, &CurrTexture->Height, &NumChannels, 4);
+
+                CurrTexture->Texels = (u32*)malloc(sizeof(u32) * CurrTexture->Width * CurrTexture->Height);
+
+                for (u32 Y = 0; Y < CurrTexture->Height; ++Y)
                 {
-                    u32 PixelId = Y * CurrTexture->Width + X;
-                    CurrTexture->Texels[PixelId] = UnFlippedTexels[(CurrTexture->Height - Y - 1) * CurrTexture->Width + X];
+                    for (u32 X = 0; X < CurrTexture->Width; ++X)
+                    {
+                        u32 PixelId = Y * CurrTexture->Width + X;
+                        CurrTexture->Texels[PixelId] = UnFlippedTexels[(CurrTexture->Height - Y - 1) * CurrTexture->Width + X];
+                    }
+                }
+
+                // NOTE: Копюємо дані до Upload Heap
+                Dx12CreateTexture(Dx12Rasterizer, CurrTexture->Width, CurrTexture->Height, (u8*)CurrTexture->Texels,
+                                  &CurrTexture->GpuTexture, &CurrTexture->GpuDescriptor);
+            
+                stbi_image_free(UnFlippedTexels);
+            }
+            
+            // NOTE: Завантажуємо текстуру нормалі
+            {
+                aiString TextureName = {};
+                CurrMaterial->GetTexture(aiTextureType_NORMALS, 0, &TextureName);
+                
+                texture* CurrTexture = Result.NormalTextureArray + CurrTextureId;
+
+                if (CurrMaterial->GetTextureCount(aiTextureType_NORMALS) == 0)
+                {
+                    *CurrTexture = AssetCreateDefaultNormalMap();
+                    
+                    // NOTE: Копюємо дані до Upload Heap
+                    Dx12CreateTexture(Dx12Rasterizer, CurrTexture->Width, CurrTexture->Height, (u8*)CurrTexture->Texels,
+                                      &CurrTexture->GpuTexture, &CurrTexture->GpuDescriptor, true);
+                }
+                else
+                {
+                    char* TexturePath = CombineStrings(FolderPath, TextureName.C_Str());
+                    
+                    i32 NumChannels = 0;
+                    u32* UnFlippedTexels = (u32*)stbi_load(TexturePath, &CurrTexture->Width, &CurrTexture->Height, &NumChannels, 4);
+                    CurrTexture->Texels = (u32*)malloc(sizeof(u32) * CurrTexture->Width * CurrTexture->Height);
+                    
+                    for (u32 Y = 0; Y < CurrTexture->Height; ++Y)
+                    {
+                        for (u32 X = 0; X < CurrTexture->Width; ++X)
+                        {
+                            u32 PixelId = Y * CurrTexture->Width + X;
+                            CurrTexture->Texels[PixelId] = UnFlippedTexels[(CurrTexture->Height - Y - 1) * CurrTexture->Width + X];
+                        }
+                    }
+                    
+                    // NOTE: Копюємо дані до Upload Heap
+                    Dx12CreateTexture(Dx12Rasterizer, CurrTexture->Width, CurrTexture->Height, (u8*)CurrTexture->Texels,
+                                      &CurrTexture->GpuTexture, &CurrTexture->GpuDescriptor, true);
+                    
+                    stbi_image_free(UnFlippedTexels);
                 }
             }
-
-            // NOTE: Копюємо дані до Upload Heap
-            Dx12CreateTexture(Dx12Rasterizer, CurrTexture->Width, CurrTexture->Height, (u8*)CurrTexture->Texels,
-                              &CurrTexture->GpuTexture, &CurrTexture->GpuDescriptor);
-            
-            stbi_image_free(UnFlippedTexels);
             
             CurrTextureId += 1;
         }
@@ -234,6 +303,14 @@ model AssetLoadModel(dx12_rasterizer* Dx12Rasterizer, char* FolderPath, char* Fi
             CurrVertex->Normal = V3(SrcMesh->mNormals[VertexId].x,
                                     SrcMesh->mNormals[VertexId].y,
                                     SrcMesh->mNormals[VertexId].z);
+
+            CurrVertex->Tangent = V3(SrcMesh->mTangents[VertexId].x,
+                                     SrcMesh->mTangents[VertexId].y,
+                                     SrcMesh->mTangents[VertexId].z);
+            
+            CurrVertex->BiTangent = V3(SrcMesh->mBitangents[VertexId].x,
+                                       SrcMesh->mBitangents[VertexId].y,
+                                       SrcMesh->mBitangents[VertexId].z);
             
             if (SrcMesh->mTextureCoords[0])
             {

@@ -19,6 +19,8 @@ struct vertex
     v3 Pos;
     v2 Uv;
     v3 Normal;
+    v3 Tangent;
+    v3 BiTangent;
 };
 
 struct texel_rgba8
@@ -55,7 +57,8 @@ struct model
     mesh* MeshArray;
 
     u32 NumTextures;
-    texture* TextureArray;
+    texture* ColorTextureArray;
+    texture* NormalTextureArray;
     
     u32 VertexCount;
     vertex* VertexArray;
