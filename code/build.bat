@@ -14,6 +14,8 @@ pushd %DataDir%
 
 call %DxcDir%\dxc.exe -E ModelVsMain -Fo ModelVsMain.shader -T vs_6_0 -Zi -Zpc -Qembed_debug %CodeDir%\model_shaders.cpp
 call %DxcDir%\dxc.exe -E ModelPsMain -Fo ModelPsMain.shader -T ps_6_0 -Zi -Zpc -Qembed_debug %CodeDir%\model_shaders.cpp
+call %DxcDir%\dxc.exe -E ShadowVsMain -Fo ShadowVsMain.shader -T vs_6_0 -Zi -Zpc -Qembed_debug %CodeDir%\shadow_shaders.cpp
+call %DxcDir%\dxc.exe -E ShadowPsMain -Fo ShadowPsMain.shader -T ps_6_0 -Zi -Zpc -Qembed_debug %CodeDir%\shadow_shaders.cpp
 
 popd %DataDir%
 

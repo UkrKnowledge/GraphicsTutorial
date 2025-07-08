@@ -688,6 +688,20 @@ v3 Lerp(v3 A, v3 B, f32 T)
     return Result;
 }
 
+f32 Dot(v3 A, v3 B)
+{
+    f32 Result = A.x * B.x + A.y * B.y + A.z * B.z;
+    return Result;
+}
+
+v3 Cross(v3 A, v3 B)
+{
+    v3 Result = V3(A.y*B.z - A.z*B.y,
+                   A.z*B.x - A.x*B.z,
+                   A.x*B.y - A.y*B.x);
+    return Result;
+}
+
 //
 // NOTE: V3
 //
@@ -844,7 +858,7 @@ m4 Transpose(m4 A)
     Result[3][1] = A[1][3];
     Result[3][2] = A[2][3];
     Result[3][3] = A[3][3];
-
+    
     return Result;
 }
 
@@ -878,22 +892,22 @@ m4 Inverse(m4 A)
     Result[0][1] = -Determinant3x3(A[0].yzw, A[2].yzw, A[3].yzw) * OneOverDeterminant;
     Result[0][2] = +Determinant3x3(A[0].yzw, A[1].yzw, A[3].yzw) * OneOverDeterminant;
     Result[0][3] = -Determinant3x3(A[0].yzw, A[1].yzw, A[2].yzw) * OneOverDeterminant;
-
+    
     Result[1][0] = -Determinant3x3(V3(A[1].x, A[1].z, A[1].w), V3(A[2].x, A[2].z, A[2].w), V3(A[3].x, A[3].z, A[3].w)) * OneOverDeterminant;
     Result[1][1] = +Determinant3x3(V3(A[0].x, A[0].z, A[0].w), V3(A[2].x, A[2].z, A[2].w), V3(A[3].x, A[3].z, A[3].w)) * OneOverDeterminant;
     Result[1][2] = -Determinant3x3(V3(A[0].x, A[0].z, A[0].w), V3(A[1].x, A[1].z, A[1].w), V3(A[3].x, A[3].z, A[3].w)) * OneOverDeterminant;
     Result[1][3] = +Determinant3x3(V3(A[0].x, A[0].z, A[0].w), V3(A[1].x, A[1].z, A[1].w), V3(A[2].x, A[2].z, A[2].w)) * OneOverDeterminant;
-
+    
     Result[2][0] = +Determinant3x3(V3(A[1].x, A[1].y, A[1].w), V3(A[2].x, A[2].y, A[2].w), V3(A[3].x, A[3].y, A[3].w)) * OneOverDeterminant;
     Result[2][1] = -Determinant3x3(V3(A[0].x, A[0].y, A[0].w), V3(A[2].x, A[2].y, A[2].w), V3(A[3].x, A[3].y, A[3].w)) * OneOverDeterminant;
     Result[2][2] = +Determinant3x3(V3(A[0].x, A[0].y, A[0].w), V3(A[1].x, A[1].y, A[1].w), V3(A[3].x, A[3].y, A[3].w)) * OneOverDeterminant;
     Result[2][3] = -Determinant3x3(V3(A[0].x, A[0].y, A[0].w), V3(A[1].x, A[1].y, A[1].w), V3(A[2].x, A[2].y, A[2].w)) * OneOverDeterminant;
-
+    
     Result[3][0] = -Determinant3x3(A[1].xyz, A[2].xyz, A[3].xyz) * OneOverDeterminant;
     Result[3][1] = +Determinant3x3(A[0].xyz, A[2].xyz, A[3].xyz) * OneOverDeterminant;
     Result[3][2] = -Determinant3x3(A[0].xyz, A[1].xyz, A[3].xyz) * OneOverDeterminant;
     Result[3][3] = +Determinant3x3(A[0].xyz, A[1].xyz, A[2].xyz) * OneOverDeterminant;
-
+    
     return Result;
 }
 
@@ -909,25 +923,25 @@ m4 ScaleMatrix(f32 X, f32 Y, f32 Z)
 m4 RotationMatrix(f32 X, f32 Y, f32 Z)
 {
     m4 Result = {};
-
+    
     m4 RotateX = IdentityM4();
     RotateX.v[1].y = cos(X);
     RotateX.v[2].y = -sin(X);
     RotateX.v[1].z = sin(X);
     RotateX.v[2].z = cos(X);
-
+    
     m4 RotateY = IdentityM4();
     RotateY.v[0].x = cos(Y);
     RotateY.v[2].x = -sin(Y);
     RotateY.v[0].z = sin(Y);
     RotateY.v[2].z = cos(Y);
-
+    
     m4 RotateZ = IdentityM4();
     RotateZ.v[0].x = cos(Z);
     RotateZ.v[1].x = -sin(Z);
     RotateZ.v[0].y = sin(Z);
     RotateZ.v[1].y = cos(Z);
-
+    
     Result = RotateZ * RotateY * RotateX;
     return Result;
 }
@@ -945,11 +959,32 @@ m4 TranslationMatrix(v3 Pos)
     return Result;
 }
 
+m4 CameraMatrix(v3 Right, v3 Up, v3 LookAt, v3 Pos)
+{
+    m4 Result = IdentityM4();
+    
+    Result.v[0].x = Right.x;
+    Result.v[1].x = Right.y;
+    Result.v[2].x = Right.z;
+    
+    Result.v[0].y = Up.x;
+    Result.v[1].y = Up.y;
+    Result.v[2].y = Up.z;
+    
+    Result.v[0].z = LookAt.x;
+    Result.v[1].z = LookAt.y;
+    Result.v[2].z = LookAt.z;
+    
+    Result = Result * TranslationMatrix(-Pos);
+    
+    return Result;
+}
+
 m4 PerspectiveMatrix(f32 Fov, f32 AspectRatio, f32 NearZ, f32 FarZ)
 {
     // NOTE: Ми очікуємо що Fov є у градусів
     m4 Result = {};
-
+    
     f32 FovRadians = (Fov / 360.0f) * 2.0f * Pi32;
     
     Result.v[0].x = 1.0f / (AspectRatio * tan(FovRadians * 0.5f));
@@ -957,6 +992,20 @@ m4 PerspectiveMatrix(f32 Fov, f32 AspectRatio, f32 NearZ, f32 FarZ)
     Result.v[2].z = -FarZ / (NearZ - FarZ);
     Result.v[3].z = NearZ * FarZ / (NearZ - FarZ);
     Result.v[2].w = 1.0f;
+    
+    return Result;
+}
 
+m4 OrthographicMatrix(v3 BoundsMin, v3 BoundsMax)
+{
+    m4 Result = {};
+    Result.v[0].x = 2.0f / (BoundsMax.x - BoundsMin.x);
+    Result.v[1].y = 2.0f / (BoundsMax.y - BoundsMin.y);
+    Result.v[2].z = 1.0f / (BoundsMax.z - BoundsMin.z);
+    Result.v[3].x = -(BoundsMax.x + BoundsMin.x) / (BoundsMax.x - BoundsMin.x);
+    Result.v[3].y = -(BoundsMax.y + BoundsMin.y) / (BoundsMax.y - BoundsMin.y);
+    Result.v[3].z = -(BoundsMin.z) / (BoundsMax.z - BoundsMin.z);
+    Result.v[3].w = 1.0f;
+    
     return Result;
 }
